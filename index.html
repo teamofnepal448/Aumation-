@@ -1,0 +1,2155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DEVIL ENGINE v5.0 — Multi-Account Telethon Script Runner</title>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  html { scroll-behavior:smooth; }
+  body { font-family:'Space Grotesk',ui-sans-serif,system-ui,sans-serif; background:#050508; color:#e2e8f0; overflow-x:hidden; }
+  .mono { font-family:'JetBrains Mono',ui-monospace,monospace; }
+  ::selection { background:rgba(244,63,94,.35); color:#fff; }
+  ::-webkit-scrollbar { width:9px; height:9px; }
+  ::-webkit-scrollbar-track { background:#0a0a12; }
+  ::-webkit-scrollbar-thumb { background:linear-gradient(180deg,#7f1d3a,#134e4a); border-radius:8px; border:2px solid #0a0a12; }
+  ::-webkit-scrollbar-thumb:hover { background:#9f1239; }
+
+  .bg-grid { background-image:linear-gradient(rgba(148,163,184,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,184,.05) 1px,transparent 1px); background-size:44px 44px; mask-image:radial-gradient(ellipse 90% 70% at 50% 0%,#000 40%,transparent 100%); }
+  .noise { background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E"); }
+  .orb { position:absolute; border-radius:9999px; filter:blur(95px); opacity:.20; animation:drift 16s ease-in-out infinite alternate; }
+  @keyframes drift { from { transform:translate3d(0,0,0) scale(1); } to { transform:translate3d(50px,-40px,0) scale(1.14); } }
+
+  .glass { background:linear-gradient(160deg,rgba(15,18,32,.85),rgba(5,5,10,.92)); border:1px solid rgba(148,163,184,.1); backdrop-filter:blur(14px); }
+  .glass:hover { border-color:rgba(244,63,94,.2); }
+  .card { transition:transform .35s cubic-bezier(.22,1,.36,1), border-color .3s, box-shadow .3s; }
+  .card:hover { transform:translateY(-2px); box-shadow:0 18px 60px -22px rgba(244,63,94,.28); }
+
+  .kicker { letter-spacing:.28em; }
+  .grad-text { background:linear-gradient(100deg,#fda4af 0%,#f43f5e 35%,#06b6d4 100%); -webkit-background-clip:text; background-clip:text; color:transparent; }
+
+  .btn { position:relative; overflow:hidden; transition:all .25s ease; }
+  .btn::after { content:""; position:absolute; inset:0; background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.16) 50%,transparent 70%); transform:translateX(-120%); transition:transform .55s ease; }
+  .btn:hover::after { transform:translateX(120%); }
+  .btn:active { transform:scale(.97); }
+  .btn:disabled { opacity:.55; pointer-events:none; }
+
+  .chip { display:inline-flex; align-items:center; gap:.4rem; font-family:'JetBrains Mono',monospace; font-size:.62rem; letter-spacing:.12em; padding:.3rem .65rem; border-radius:9999px; border:1px solid rgba(148,163,184,.18); color:#94a3b8; background:rgba(15,18,32,.6); white-space:nowrap; }
+  .chip-on { border-color:rgba(16,185,129,.45); color:#34d399; background:rgba(16,185,129,.08); }
+  .chip-live { border-color:rgba(244,63,94,.55); color:#fb7185; background:rgba(244,63,94,.1); animation:pulseGlow 2s ease-in-out infinite; }
+  .chip-cyan { border-color:rgba(6,182,212,.5); color:#22d3ee; background:rgba(6,182,212,.08); }
+  .chip-err { border-color:rgba(251,113,133,.5); color:#fb7185; background:rgba(244,63,94,.08); }
+  .chip-off { border-color:rgba(148,163,184,.2); color:#64748b; }
+  @keyframes pulseGlow { 0%,100% { box-shadow:0 0 0 0 rgba(244,63,94,.35); } 50% { box-shadow:0 0 18px 3px rgba(244,63,94,.22); } }
+  .dot { width:6px; height:6px; border-radius:9999px; background:currentColor; }
+  .dot-blink { animation:blink 1.4s ease-in-out infinite; }
+  @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:.2; } }
+
+  .field { width:100%; background:rgba(4,4,10,.8); border:1px solid rgba(148,163,184,.14); border-radius:.65rem; padding:.62rem .85rem; font-family:'JetBrains Mono',monospace; font-size:.8rem; color:#e2e8f0; outline:none; transition:border-color .25s, box-shadow .25s; }
+  .field:focus { border-color:rgba(244,63,94,.55); box-shadow:0 0 0 3px rgba(244,63,94,.12); }
+  .field::placeholder { color:#475569; }
+  select.field option { background:#0a0a14; }
+  label.flab { font-family:'JetBrains Mono',monospace; font-size:.6rem; letter-spacing:.16em; color:#8b93a7; display:block; margin-bottom:.35rem; }
+
+  .editor-shell { background:#07070d; border:1px solid rgba(148,163,184,.13); border-radius:.8rem; overflow:hidden; }
+  .editor-head { display:flex; align-items:center; gap:.5rem; padding:.55rem .8rem; border-bottom:1px solid rgba(148,163,184,.1); background:rgba(15,18,32,.6); }
+  .ed-wrap { display:grid; grid-template-columns:46px 1fr; }
+  .ed-gutter { margin:0; padding:.75rem 0; font-family:'JetBrains Mono',monospace; font-size:.72rem; line-height:1.55; text-align:right; color:#3b4252; background:rgba(10,10,18,.7); overflow:hidden; user-select:none; white-space:pre; border-right:1px solid rgba(148,163,184,.08); }
+  .ed-code { margin:0; padding:.75rem .9rem; font-family:'JetBrains Mono',monospace; font-size:.72rem; line-height:1.55; color:#c8d3e8; background:transparent; border:none; outline:none; resize:none; white-space:pre; overflow:auto; caret-color:#fb7185; min-height:340px; max-height:460px; }
+  .ed-code::selection { background:rgba(244,63,94,.25); }
+
+  .console-wrap { background:#040407; border:1px solid rgba(148,163,184,.12); border-radius:.9rem; position:relative; overflow:hidden; }
+  .console-wrap::before { content:""; position:absolute; inset:0; pointer-events:none; background:repeating-linear-gradient(0deg,rgba(255,255,255,.015) 0 1px,transparent 1px 3px); z-index:5; }
+  .logline { display:grid; grid-template-columns:66px 56px 96px 1fr; gap:.6rem; padding:.11rem 0; font-family:'JetBrains Mono',monospace; font-size:.7rem; line-height:1.5; word-break:break-word; }
+  .logline:hover { background:rgba(244,63,94,.05); }
+
+  .proc-card { transition:all .3s ease; }
+  .proc-card:hover { border-color:rgba(244,63,94,.35); }
+
+  .code-scroll { scrollbar-width:thin; }
+  .cl { display:block; counter-increment:ln; padding-left:3.4rem; position:relative; min-height:1.5em; white-space:pre; }
+  .cl::before { content:counter(ln); position:absolute; left:0; width:2.5rem; text-align:right; color:#334155; user-select:none; }
+  .cl:hover { background:rgba(244,63,94,.05); }
+  .code-body { counter-reset:ln; }
+  .tok-kw { color:#fb7185; } .tok-str { color:#34d399; } .tok-com { color:#475569; font-style:italic; }
+  .tok-dec { color:#22d3ee; } .tok-num { color:#fbbf24; }
+
+  .tab { transition:all .2s ease; }
+  .tab:hover { color:#e2e8f0; }
+
+  .flowpath { stroke-dasharray:5 7; animation:dashmove 1.1s linear infinite; }
+  @keyframes dashmove { to { stroke-dashoffset:-12; } }
+  .toast { padding:.65rem .9rem; border-radius:.7rem; font-size:.76rem; border:1px solid; margin-bottom:.5rem; animation:tin .3s cubic-bezier(.22,1,.36,1); }
+  @keyframes tin { from { transform:translateY(10px); opacity:0; } to { transform:none; opacity:1; } }
+  .toast-ok { border-color:rgba(16,185,129,.4); background:rgba(16,185,129,.1); color:#6ee7b7; }
+  .toast-err { border-color:rgba(251,113,133,.45); background:rgba(244,63,94,.12); color:#fda4af; }
+  .toast-warn { border-color:rgba(245,158,11,.4); background:rgba(245,158,11,.1); color:#fcd34d; }
+
+  #cursor-glow { position:fixed; width:520px; height:520px; border-radius:9999px; pointer-events:none; z-index:1; background:radial-gradient(circle,rgba(244,63,94,.06),transparent 62%); transform:translate(-50%,-50%); }
+  .reveal { opacity:0; transform:translateY(26px); transition:opacity .8s ease, transform .8s cubic-bezier(.22,1,.36,1); }
+  .reveal.vis { opacity:1; transform:none; }
+  .devil-glow { text-shadow:0 0 24px rgba(244,63,94,.45); }
+</style>
+</head>
+<body class="antialiased">
+
+<div class="fixed inset-0 z-0 pointer-events-none">
+  <div class="absolute inset-0 bg-grid"></div>
+  <div class="orb w-[560px] h-[560px] bg-rose-600 -top-40 -left-40"></div>
+  <div class="orb w-[480px] h-[480px] bg-cyan-500 top-1/3 -right-52" style="animation-delay:-6s"></div>
+  <div class="orb w-[420px] h-[420px] bg-rose-700 bottom-0 left-1/4" style="animation-delay:-11s"></div>
+  <div class="absolute inset-0 noise"></div>
+</div>
+<div id="cursor-glow"></div>
+
+<!-- ============ NAV ============ -->
+<nav class="relative z-20 sticky top-0 border-b border-slate-800/60 bg-[#050508]/85 backdrop-blur-xl">
+  <div class="max-w-7xl mx-auto px-5 md:px-8 h-16 flex items-center justify-between gap-4">
+    <a href="#top" class="flex items-center gap-3 group">
+      <span class="w-9 h-9 rounded-xl bg-gradient-to-br from-rose-600 to-rose-400 flex items-center justify-center shadow-lg shadow-rose-500/30 group-hover:shadow-rose-400/45 transition-shadow">
+        <i data-lucide="flame" class="w-5 h-5 text-slate-950"></i>
+      </span>
+      <span class="font-bold tracking-tight text-lg">DEVIL<span class="text-rose-400">ENGINE</span> <span class="mono text-[10px] text-slate-500 tracking-[.2em] ml-1 hidden sm:inline">QUART·TELETHON·ASYNCIO</span></span>
+    </a>
+    <div class="hidden md:flex items-center gap-6 mono text-[11px] tracking-[.18em] text-slate-400">
+      <a href="#deck" class="hover:text-rose-300 transition-colors">LIVE DECK</a>
+      <a href="#source" class="hover:text-rose-300 transition-colors">SOURCE</a>
+      <a href="#deploy" class="hover:text-rose-300 transition-colors">DEPLOY</a>
+    </div>
+    <div class="flex items-center gap-2">
+      <button id="nav-copy-req" class="btn mono text-[11px] tracking-wider px-3.5 py-2 rounded-lg border border-slate-700 text-slate-300 hover:border-slate-500 flex items-center gap-2">
+        <i data-lucide="copy" class="w-3.5 h-3.5"></i><span class="hidden sm:inline">requirements.txt</span>
+      </button>
+      <button id="nav-copy-py" class="btn mono text-[11px] tracking-wider px-3.5 py-2 rounded-lg bg-rose-500 text-slate-950 font-bold hover:bg-rose-400 flex items-center gap-2 shadow-lg shadow-rose-500/25">
+        <i data-lucide="clipboard-copy" class="w-3.5 h-3.5"></i><span class="hidden sm:inline">COPY main.py</span><span class="sm:hidden">main.py</span>
+      </button>
+    </div>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<header id="top" class="relative z-10 max-w-7xl mx-auto px-5 md:px-8 pt-16 md:pt-24 pb-14 md:pb-20">
+  <div class="grid lg:grid-cols-12 gap-10 items-center">
+    <div class="lg:col-span-7 reveal">
+      <div class="flex flex-wrap items-center gap-2 mb-6">
+        <span class="chip chip-on"><span class="dot dot-blink"></span>PRODUCTION BUILD v5.0</span>
+        <span class="chip chip-cyan"><i data-lucide="shield-check" class="w-3 h-3"></i>ISOLATED ASYNCIO TASKS</span>
+        <span class="chip"><i data-lucide="file-code-2" class="w-3 h-3"></i>SINGLE-FILE APP</span>
+      </div>
+      <h1 class="text-4xl md:text-6xl font-bold leading-[1.04] tracking-tight">
+        Run <span class="grad-text devil-glow">any Telethon script</span><br>
+        on any account.<br>
+        All from one deck.
+      </h1>
+      <p class="mt-6 text-slate-400 max-w-xl text-base md:text-lg leading-relaxed">
+        DEVIL ENGINE is a full-stack multi-project manager: authorize many Telegram accounts, paste <span class="text-slate-200 font-semibold">your own Python Telethon code</span> into the editor, and execute it in an <span class="text-slate-200 font-semibold">isolated asyncio task</span> with a real connected <span class="mono text-rose-300 text-sm">client</span> injected straight into the runtime. One broken script can never take the rest down.
+      </p>
+      <div class="mt-8 flex flex-col sm:flex-row gap-3">
+        <div class="glass rounded-xl px-4 py-3 flex items-center gap-3 mono text-[13px] flex-1 min-w-0">
+          <span class="text-emerald-400 select-none">$</span>
+          <span class="truncate text-slate-200">hypercorn main:app --bind 0.0.0.0:$PORT</span>
+          <button id="hero-copy-cmd" class="ml-auto text-slate-500 hover:text-rose-300 transition-colors shrink-0" title="Copy"><i data-lucide="copy" class="w-4 h-4"></i></button>
+        </div>
+        <a href="#deck" class="btn px-6 py-3 rounded-xl bg-rose-500 text-slate-950 font-bold text-sm flex items-center justify-center gap-2 hover:bg-rose-400 shadow-lg shadow-rose-500/25">
+          OPEN LIVE DECK <i data-lucide="arrow-down" class="w-4 h-4"></i>
+        </a>
+      </div>
+      <div class="mt-8 grid grid-cols-3 max-w-md gap-3">
+        <div><div class="mono text-2xl font-bold text-rose-400">10</div><div class="mono text-[10px] tracking-[.18em] text-slate-500 mt-1">REST ENDPOINTS</div></div>
+        <div><div class="mono text-2xl font-bold text-cyan-400">N×N</div><div class="mono text-[10px] tracking-[.18em] text-slate-500 mt-1">ACCOUNTS × SCRIPTS</div></div>
+        <div><div class="mono text-2xl font-bold text-emerald-400">0</div><div class="mono text-[10px] tracking-[.18em] text-slate-500 mt-1">SERVER-KILL CRASHES</div></div>
+      </div>
+    </div>
+
+    <!-- engine mesh diagram -->
+    <div class="lg:col-span-5 reveal">
+      <div class="glass card rounded-2xl p-6 relative overflow-hidden">
+        <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-rose-400/60 to-transparent"></div>
+        <div class="flex items-center justify-between mb-4">
+          <span class="mono text-[10px] tracking-[.24em] text-slate-500">EXECUTION MESH</span>
+          <span class="chip chip-live"><span class="dot dot-blink"></span>asyncio</span>
+        </div>
+        <svg viewBox="0 0 420 250" class="w-full h-auto" fill="none">
+          <defs>
+            <linearGradient id="lg2" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#f43f5e"/><stop offset="1" stop-color="#06b6d4"/></linearGradient>
+          </defs>
+          <path d="M 92 62 C 150 62, 160 105, 214 118" stroke="url(#lg2)" stroke-width="1.5" class="flowpath"/>
+          <path d="M 92 126 L 214 126" stroke="url(#lg2)" stroke-width="1.5" class="flowpath" style="animation-delay:-.3s"/>
+          <path d="M 92 190 C 150 190, 160 148, 214 134" stroke="url(#lg2)" stroke-width="1.5" class="flowpath" style="animation-delay:-.55s"/>
+          <path d="M 264 112 C 312 92, 332 70, 356 60" stroke="#06b6d4" stroke-width="1.5" class="flowpath" style="animation-delay:-.7s"/>
+          <path d="M 264 126 L 358 126" stroke="#06b6d4" stroke-width="1.5" class="flowpath" style="animation-delay:-.9s"/>
+          <path d="M 264 140 C 312 160, 332 182, 356 192" stroke="#06b6d4" stroke-width="1.5" class="flowpath" style="animation-delay:-1.05s"/>
+          <circle r="3.4" fill="#fb7185"><animateMotion dur="2s" repeatCount="indefinite" path="M 92 62 C 150 62, 160 105, 214 118"/></circle>
+          <circle r="3.4" fill="#fb7185"><animateMotion dur="1.6s" begin=".4s" repeatCount="indefinite" path="M 92 126 L 214 126"/></circle>
+          <circle r="3.4" fill="#fb7185"><animateMotion dur="2.4s" begin=".7s" repeatCount="indefinite" path="M 92 190 C 150 190, 160 148, 214 134"/></circle>
+          <circle r="3" fill="#22d3ee"><animateMotion dur="1.9s" begin=".2s" repeatCount="indefinite" path="M 264 126 L 358 126"/></circle>
+          <circle r="3" fill="#22d3ee"><animateMotion dur="2.3s" begin=".9s" repeatCount="indefinite" path="M 264 112 C 312 92, 332 70, 356 60"/></circle>
+          <circle r="3" fill="#22d3ee"><animateMotion dur="2.1s" begin="1.2s" repeatCount="indefinite" path="M 264 140 C 312 160, 332 182, 356 192"/></circle>
+          <rect x="16" y="44" width="76" height="36" rx="9" fill="rgba(244,63,94,.08)" stroke="rgba(244,63,94,.4)"/>
+          <rect x="16" y="108" width="76" height="36" rx="9" fill="rgba(244,63,94,.08)" stroke="rgba(244,63,94,.4)"/>
+          <rect x="16" y="172" width="76" height="36" rx="9" fill="rgba(244,63,94,.08)" stroke="rgba(244,63,94,.4)"/>
+          <text x="54" y="66" text-anchor="middle" fill="#fda4af" font-size="9" font-family="JetBrains Mono">ACCT +1…</text>
+          <text x="54" y="130" text-anchor="middle" fill="#fda4af" font-size="9" font-family="JetBrains Mono">ACCT +44…</text>
+          <text x="54" y="194" text-anchor="middle" fill="#fda4af" font-size="9" font-family="JetBrains Mono">ACCT +91…</text>
+          <rect x="214" y="92" width="60" height="66" rx="14" fill="rgba(6,182,212,.09)" stroke="rgba(6,182,212,.5)"/>
+          <text x="244" y="118" text-anchor="middle" fill="#67e8f9" font-size="10" font-family="JetBrains Mono" letter-spacing="1">ENGINE</text>
+          <text x="244" y="133" text-anchor="middle" fill="#475569" font-size="8" font-family="JetBrains Mono">exec()</text>
+          <rect x="356" y="44" width="52" height="32" rx="9" fill="rgba(6,182,212,.07)" stroke="rgba(6,182,212,.35)"/>
+          <rect x="358" y="110" width="52" height="32" rx="9" fill="rgba(6,182,212,.07)" stroke="rgba(6,182,212,.35)"/>
+          <rect x="356" y="176" width="52" height="32" rx="9" fill="rgba(6,182,212,.07)" stroke="rgba(6,182,212,.35)"/>
+          <text x="384" y="130" text-anchor="middle" fill="#67e8f9" font-size="8.5" font-family="JetBrains Mono">TASK</text>
+          <text x="20" y="232" fill="#334155" font-size="9" font-family="JetBrains Mono">client injected → compile() → asyncio.create_task → per-task kill switch</text>
+        </svg>
+        <div class="mt-3 grid grid-cols-3 gap-2 mono text-[10px]">
+          <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-2.5"><span class="text-rose-300 block">/api/run-script</span><span class="text-slate-500">compile+create_task</span></div>
+          <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-2.5"><span class="text-rose-300 block">/api/stop-script</span><span class="text-slate-500">task.cancel()</span></div>
+          <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-2.5"><span class="text-rose-300 block">/api/logs</span><span class="text-slate-500">tagged stream</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ============ LIVE DECK ============ -->
+<section id="deck" class="relative z-10 max-w-7xl mx-auto px-5 md:px-8 py-14">
+  <div class="reveal">
+    <div class="flex items-end justify-between flex-wrap gap-4 mb-8">
+      <div>
+        <p class="kicker mono text-[11px] text-rose-400 mb-2">01 — LIVE CONTROL DECK</p>
+        <h2 class="text-3xl md:text-4xl font-bold tracking-tight">The exact <span class="mono text-rose-300">DEVIL v5.0</span> UI embedded in main.py</h2>
+        <p class="text-slate-500 mt-2 max-w-2xl text-sm md:text-base">Every control below hits real Quart routes. Serve the file with Hypercorn and it works same-origin — or set an API base to pilot a remote Render deployment (CORS is enabled server-side).</p>
+      </div>
+      <div class="flex items-center gap-2 glass rounded-xl px-3 py-2">
+        <span class="mono text-[10px] tracking-widest text-slate-500">API&nbsp;BASE</span>
+        <input id="dv-base" class="field !py-1.5 !px-2.5 !text-[11px] !w-48 sm:!w-64" placeholder="same origin (blank)">
+        <button id="dv-base-save" class="btn mono text-[10px] px-3 py-1.5 rounded-md bg-rose-500/15 text-rose-300 border border-rose-500/30 hover:bg-rose-500/25">SET</button>
+      </div>
+    </div>
+
+    <!-- DECK APP (mirrors embedded DASHBOARD_HTML 1:1) -->
+    <div class="glass rounded-2xl overflow-hidden">
+      <!-- topbar -->
+      <div class="flex flex-wrap items-center gap-3 px-5 py-4 border-b border-slate-800/70 bg-slate-950/60">
+        <span class="w-8 h-8 rounded-lg bg-gradient-to-br from-rose-600 to-rose-400 flex items-center justify-center"><i data-lucide="flame" class="w-4 h-4 text-slate-950"></i></span>
+        <div>
+          <div class="font-bold tracking-tight text-sm md:text-base">DEVIL MULTI-PROJECT MANAGER <span class="text-rose-400">v5.0</span></div>
+          <div class="mono text-[9px] text-slate-500 tracking-[.22em]">MULTI-ACCOUNT TELETHON SCRIPT ENGINE</div>
+        </div>
+        <div class="ml-auto flex items-center gap-2">
+          <span id="dv-chip-server" class="chip chip-err"><span class="dot dot-blink"></span>SERVER OFFLINE</span>
+          <span id="dv-chip-procs" class="chip chip-cyan"><i data-lucide="cpu" class="w-3 h-3"></i>0 PROCESSES</span>
+        </div>
+      </div>
+
+      <div class="p-5 grid lg:grid-cols-12 gap-5">
+        <!-- LEFT: auth + accounts -->
+        <div class="lg:col-span-5 space-y-5">
+          <div class="rounded-xl border border-slate-800/70 bg-slate-950/40 p-4">
+            <h3 class="font-bold text-sm flex items-center gap-2 mb-3"><i data-lucide="key-round" class="w-4 h-4 text-rose-400"></i>Account Authorization</h3>
+            <div class="grid grid-cols-2 gap-3">
+              <div><label class="flab" for="dv-api-id">API_ID</label><input id="dv-api-id" class="field" placeholder="204xxxxx" inputmode="numeric"></div>
+              <div><label class="flab" for="dv-api-hash">API_HASH</label><input id="dv-api-hash" type="password" class="field" placeholder="0123abc…"></div>
+            </div>
+            <div class="mt-3"><label class="flab" for="dv-phone">PHONE NUMBER</label><input id="dv-phone" class="field" placeholder="+1 555 000 1122"></div>
+            <button id="dv-btn-otp" class="btn mt-3 w-full py-2.5 rounded-lg bg-rose-500 text-slate-950 font-bold text-sm hover:bg-rose-400 flex items-center justify-center gap-2">
+              <i data-lucide="send" class="w-4 h-4"></i><span data-label>Send OTP</span>
+            </button>
+            <div id="dv-otp-block" class="hidden mt-4 pt-4 border-t border-dashed border-slate-700/70">
+              <div class="mono text-[9px] tracking-[.2em] text-emerald-300 mb-3 flex items-center gap-2"><span class="dot dot-blink"></span>OTP DISPATCHED — CHECK TELEGRAM</div>
+              <div class="grid grid-cols-2 gap-3">
+                <div><label class="flab" for="dv-otp">OTP CODE</label><input id="dv-otp" class="field" placeholder="12345" autocomplete="one-time-code"></div>
+                <div><label class="flab" for="dv-2fa">2FA (OPTIONAL)</label><input id="dv-2fa" type="password" class="field" placeholder="cloud password"></div>
+              </div>
+              <button id="dv-btn-verify" class="btn mt-3 w-full py-2.5 rounded-lg bg-emerald-500 text-slate-950 font-bold text-sm hover:bg-emerald-400 flex items-center justify-center gap-2">
+                <i data-lucide="shield-check" class="w-4 h-4"></i><span data-label>Verify &amp; Save Session</span>
+              </button>
+              <div id="dv-session-wrap" class="hidden mt-3">
+                <label class="flab" for="dv-out-session">STRING SESSION — SAVED TO sessions.json</label>
+                <div class="relative">
+                  <textarea id="dv-out-session" readonly class="field h-16 !text-[10px] resize-none pr-8"></textarea>
+                  <button id="dv-btn-copy-session" class="absolute top-2 right-2 text-slate-500 hover:text-rose-300"><i data-lucide="copy" class="w-4 h-4"></i></button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-slate-800/70 bg-slate-950/40 p-4">
+            <h3 class="font-bold text-sm flex items-center gap-2 mb-3"><i data-lucide="users" class="w-4 h-4 text-cyan-400"></i>Active Accounts</h3>
+            <div class="overflow-x-auto">
+              <table class="w-full mono text-[11px]">
+                <thead>
+                  <tr class="text-left text-slate-600 border-b border-slate-800">
+                    <th class="py-1.5 pr-2 font-semibold tracking-widest text-[9px]">PHONE</th>
+                    <th class="py-1.5 pr-2 font-semibold tracking-widest text-[9px]">STATUS</th>
+                    <th class="py-1.5 pr-2 font-semibold tracking-widest text-[9px]">RUNNING SCRIPT</th>
+                    <th class="py-1.5 font-semibold tracking-widest text-[9px] text-right">ACTION</th>
+                  </tr>
+                </thead>
+                <tbody id="dv-accounts-body">
+                  <tr><td colspan="4" class="py-4 text-center text-slate-600">No accounts authorized yet.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT: script runner -->
+        <div class="lg:col-span-7">
+          <div class="rounded-xl border border-slate-800/70 bg-slate-950/40 p-4 h-full flex flex-col">
+            <h3 class="font-bold text-sm flex items-center gap-2 mb-3"><i data-lucide="terminal-square" class="w-4 h-4 text-rose-400"></i>Dynamic Script Runner</h3>
+            <div class="grid sm:grid-cols-2 gap-3 mb-3">
+              <div>
+                <label class="flab" for="dv-run-account">RUN ON ACCOUNT</label>
+                <select id="dv-run-account" class="field"><option value="">— no accounts —</option></select>
+              </div>
+              <div>
+                <label class="flab" for="dv-script-name">SCRIPT NAME</label>
+                <input id="dv-script-name" class="field" placeholder="Cleaner Bot Account 1">
+              </div>
+            </div>
+            <div class="editor-shell flex-1 flex flex-col">
+              <div class="editor-head">
+                <span class="w-2.5 h-2.5 rounded-full bg-rose-500/70"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-amber-500/70"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500/70"></span>
+                <span class="mono text-[10px] text-slate-500 ml-1" id="dv-editor-title">script.py — telethon context</span>
+                <div class="ml-auto flex items-center gap-1.5">
+                  <select id="dv-templates" class="field !py-1 !px-2 !text-[10px] !w-32"><option value="">templates…</option></select>
+                  <button id="dv-btn-load-tpl" class="btn mono text-[10px] px-2.5 py-1 rounded border border-slate-700 text-slate-400 hover:border-slate-500">Load</button>
+                </div>
+              </div>
+              <div class="ed-wrap flex-1">
+                <pre id="dv-gutter" class="ed-gutter">1</pre>
+                <textarea id="dv-code" class="ed-code code-scroll" spellcheck="false" wrap="off"></textarea>
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-1.5 mt-3">
+              <span class="chip chip-on">client</span>
+              <span class="chip chip-on">SESSION_STRING</span>
+              <span class="chip chip-cyan">PHONE</span>
+              <span class="chip chip-cyan">events · errors · utils · types</span>
+              <span class="chip">asyncio · re · json · time · datetime</span>
+              <span class="chip">log("msg") · print→terminal</span>
+            </div>
+            <div class="grid sm:grid-cols-2 gap-3 mt-3">
+              <button id="dv-btn-run" class="btn py-2.5 rounded-lg bg-gradient-to-r from-rose-500 to-rose-400 text-slate-950 font-bold text-sm hover:opacity-95 flex items-center justify-center gap-2 shadow-lg shadow-rose-500/20">
+                <i data-lucide="play" class="w-4 h-4"></i><span data-label>Run Script on Selected Account</span>
+              </button>
+              <button id="dv-btn-save-tpl" class="btn py-2.5 rounded-lg border border-cyan-500/40 text-cyan-300 font-bold text-sm hover:bg-cyan-500/10 flex items-center justify-center gap-2">
+                <i data-lucide="save" class="w-4 h-4"></i><span data-label>Save Code Template</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- processes -->
+        <div class="lg:col-span-5">
+          <div class="rounded-xl border border-slate-800/70 bg-slate-950/40 p-4">
+            <h3 class="font-bold text-sm flex items-center gap-2 mb-3"><i data-lucide="activity" class="w-4 h-4 text-emerald-400"></i>Running Processes</h3>
+            <div id="dv-procs" class="space-y-2">
+              <p class="mono text-[11px] text-slate-600 text-center py-6">No engines running. Launch a script above.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- terminal -->
+        <div class="lg:col-span-7">
+          <div class="console-wrap h-full">
+            <div class="flex items-center gap-2 px-4 py-2.5 border-b border-slate-800/70 bg-slate-950/60">
+              <span class="w-2.5 h-2.5 rounded-full bg-rose-500/70"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-amber-500/70"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500/70"></span>
+              <span class="mono text-[10px] text-slate-400 ml-1">devil://live-terminal — all tasks</span>
+              <div class="ml-auto flex items-center gap-2">
+                <input id="dv-filter" class="field !py-1 !px-2 !text-[10px] !w-32" placeholder="filter…">
+                <button id="dv-btn-pause" class="btn mono text-[10px] px-2 py-1 rounded border border-slate-700 text-slate-400 hover:border-slate-500"><span data-label>Pause</span></button>
+                <button id="dv-btn-clear" class="btn mono text-[10px] px-2 py-1 rounded border border-slate-700 text-slate-400 hover:border-slate-500">Clear</button>
+              </div>
+            </div>
+            <div id="dv-term" class="h-[300px] overflow-y-auto px-4 py-3 code-scroll">
+              <div class="logline"><span class="text-slate-600">--:--:--</span><span class="text-slate-500 font-semibold">SYS   </span><span class="text-slate-500">[core]</span><span class="text-slate-500">Terminal attached. Streaming GET /api/logs…</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="dv-offline" class="mt-4 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 flex items-start gap-3">
+      <i data-lucide="triangle-alert" class="w-5 h-5 text-amber-400 shrink-0 mt-0.5"></i>
+      <div class="text-sm">
+        <p class="text-amber-200 font-semibold">Engine unreachable</p>
+        <p class="text-slate-400 mt-1">This preview is static. Run <span class="mono text-rose-300 text-xs bg-slate-900 px-1.5 py-0.5 rounded">hypercorn main:app --bind 0.0.0.0:$PORT</span> and set the API base above (or serve this page from Quart). Every poll recovers automatically.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SOURCE ============ -->
+<section id="source" class="relative z-10 max-w-7xl mx-auto px-5 md:px-8 py-14">
+  <div class="reveal">
+    <div class="flex items-end justify-between flex-wrap gap-4 mb-8">
+      <div>
+        <p class="kicker mono text-[11px] text-emerald-400 mb-2">02 — FULL SOURCE · NO TRUNCATION</p>
+        <h2 class="text-3xl md:text-4xl font-bold tracking-tight">Every line of the engine</h2>
+        <p class="text-slate-500 mt-2 max-w-2xl text-sm md:text-base">Complete <span class="mono text-rose-300">main.py</span> (Quart + Telethon + asyncio execution engine + embedded UI), pinned <span class="mono text-rose-300">requirements.txt</span>, and <span class="mono text-rose-300">render.yaml</span>.</p>
+      </div>
+      <div class="flex gap-2">
+        <button id="src-copy" class="btn mono text-[11px] px-4 py-2.5 rounded-lg bg-rose-500 text-slate-950 font-bold hover:bg-rose-400 flex items-center gap-2"><i data-lucide="clipboard-copy" class="w-4 h-4"></i>Copy file</button>
+        <button id="src-dl" class="btn mono text-[11px] px-4 py-2.5 rounded-lg border border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/10 flex items-center gap-2"><i data-lucide="download" class="w-4 h-4"></i>Download</button>
+      </div>
+    </div>
+    <div class="glass card rounded-2xl overflow-hidden">
+      <div class="flex items-center gap-1 px-3 pt-3 border-b border-slate-800/70 overflow-x-auto">
+        <button data-tab="main.py" class="tab src-tab mono text-[11px] px-4 py-2.5 rounded-t-lg border-b-2 border-rose-400 text-rose-300 bg-slate-900/60 flex items-center gap-2 whitespace-nowrap"><i data-lucide="file-code-2" class="w-3.5 h-3.5"></i>main.py</button>
+        <button data-tab="requirements.txt" class="tab src-tab mono text-[11px] px-4 py-2.5 rounded-t-lg border-b-2 border-transparent text-slate-500 hover:bg-slate-900/40 flex items-center gap-2 whitespace-nowrap"><i data-lucide="package" class="w-3.5 h-3.5"></i>requirements.txt</button>
+        <button data-tab="render.yaml" class="tab src-tab mono text-[11px] px-4 py-2.5 rounded-t-lg border-b-2 border-transparent text-slate-500 hover:bg-slate-900/40 flex items-center gap-2 whitespace-nowrap"><i data-lucide="cloud" class="w-3.5 h-3.5"></i>render.yaml</button>
+        <div class="ml-auto mono text-[10px] text-slate-600 pb-2 pr-2 hidden sm:flex items-center gap-3">
+          <span><span id="src-lines" class="text-slate-400">0</span> LINES</span>
+          <span><span id="src-bytes" class="text-slate-400">0</span> KB</span>
+        </div>
+      </div>
+      <div class="max-h-[640px] overflow-auto code-scroll">
+        <pre class="mono text-[12.5px] leading-relaxed py-4"><code id="src-view" class="code-body block text-slate-300"></code></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ DEPLOY / ARCHITECTURE ============ -->
+<section id="deploy" class="relative z-10 max-w-7xl mx-auto px-5 md:px-8 py-14 pb-24">
+  <div class="reveal">
+    <p class="kicker mono text-[11px] text-rose-400 mb-2">03 — SHIP IT</p>
+    <h2 class="text-3xl md:text-4xl font-bold tracking-tight mb-10">Zero to executing in four moves</h2>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
+      <div class="glass card rounded-2xl p-5">
+        <div class="w-9 h-9 rounded-lg bg-rose-500/15 border border-rose-500/30 flex items-center justify-center mono text-rose-300 font-bold text-sm mb-4">1</div>
+        <h3 class="font-bold mb-1.5 text-sm">Get API credentials</h3>
+        <p class="text-slate-500 text-[13px] leading-relaxed">Create an app at <span class="mono text-rose-300 text-xs">my.telegram.org</span> → API Development Tools. One pair works for every account you authorize.</p>
+      </div>
+      <div class="glass card rounded-2xl p-5">
+        <div class="w-9 h-9 rounded-lg bg-rose-500/15 border border-rose-500/30 flex items-center justify-center mono text-rose-300 font-bold text-sm mb-4">2</div>
+        <h3 class="font-bold mb-1.5 text-sm">Push the files</h3>
+        <p class="text-slate-500 text-[13px] leading-relaxed">Commit <span class="mono text-rose-300 text-xs">main.py</span> + <span class="mono text-rose-300 text-xs">requirements.txt</span> (optionally <span class="mono text-rose-300 text-xs">render.yaml</span>) to Git.</p>
+      </div>
+      <div class="glass card rounded-2xl p-5">
+        <div class="w-9 h-9 rounded-lg bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center mono text-cyan-300 font-bold text-sm mb-4">3</div>
+        <h3 class="font-bold mb-1.5 text-sm">Render web service</h3>
+        <p class="text-slate-500 text-[13px] leading-relaxed">Build: <span class="mono text-cyan-300 text-xs">pip install -r requirements.txt</span><br>Start: <span class="mono text-cyan-300 text-xs">hypercorn main:app --bind 0.0.0.0:$PORT</span></p>
+      </div>
+      <div class="glass card rounded-2xl p-5">
+        <div class="w-9 h-9 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center mono text-emerald-300 font-bold text-sm mb-4">4</div>
+        <h3 class="font-bold mb-1.5 text-sm">Authorize &amp; execute</h3>
+        <p class="text-slate-500 text-[13px] leading-relaxed">OTP-connect accounts (sessions persist to <span class="mono text-xs text-slate-300">sessions.json</span> and auto-restore on boot), pick one, paste code, Run.</p>
+      </div>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-6">
+      <div class="glass card rounded-2xl p-6">
+        <h3 class="font-bold flex items-center gap-2 mb-5"><i data-lucide="workflow" class="w-5 h-5 text-rose-400"></i>Wire map — UI → engine core</h3>
+        <div class="space-y-3 mono text-[12px]">
+          <div class="flex items-center gap-3 p-3 rounded-lg bg-slate-900/50 border border-slate-800"><span class="text-slate-400 w-40 shrink-0">Send OTP</span><i data-lucide="arrow-right" class="w-3.5 h-3.5 text-slate-600 shrink-0"></i><span class="text-rose-300">client.send_code_request(phone)</span></div>
+          <div class="flex items-center gap-3 p-3 rounded-lg bg-slate-900/50 border border-slate-800"><span class="text-slate-400 w-40 shrink-0">Verify &amp; Save</span><i data-lucide="arrow-right" class="w-3.5 h-3.5 text-slate-600 shrink-0"></i><span class="text-rose-300">sign_in() → session.save() → sessions.json</span></div>
+          <div class="flex items-center gap-3 p-3 rounded-lg bg-slate-900/50 border border-slate-800"><span class="text-slate-400 w-40 shrink-0">Run Script</span><i data-lucide="arrow-right" class="w-3.5 h-3.5 text-slate-600 shrink-0"></i><span class="text-cyan-300">compile() → exec(env) → create_task</span></div>
+          <div class="flex items-center gap-3 p-3 rounded-lg bg-slate-900/50 border border-slate-800"><span class="text-slate-400 w-40 shrink-0">Injected env</span><i data-lucide="arrow-right" class="w-3.5 h-3.5 text-slate-600 shrink-0"></i><span class="text-cyan-300">client, SESSION_STRING, events, log()</span></div>
+          <div class="flex items-center gap-3 p-3 rounded-lg bg-slate-900/50 border border-slate-800"><span class="text-slate-400 w-40 shrink-0">Stop Task</span><i data-lucide="arrow-right" class="w-3.5 h-3.5 text-slate-600 shrink-0"></i><span class="text-emerald-300">task.cancel() → handler snapshot purge</span></div>
+          <div class="flex items-center gap-3 p-3 rounded-lg bg-slate-900/50 border border-slate-800"><span class="text-slate-400 w-40 shrink-0">Terminal</span><i data-lucide="arrow-right" class="w-3.5 h-3.5 text-slate-600 shrink-0"></i><span class="text-slate-300">tagged ring-buffer → /api/logs?since=</span></div>
+        </div>
+      </div>
+      <div class="glass card rounded-2xl p-6">
+        <h3 class="font-bold flex items-center gap-2 mb-5"><i data-lucide="shield-check" class="w-5 h-5 text-emerald-400"></i>Crash-proof by construction</h3>
+        <ul class="space-y-3.5 text-[13px] text-slate-400">
+          <li class="flex gap-3"><i data-lucide="check" class="w-4 h-4 text-emerald-400 shrink-0 mt-0.5"></i><span><span class="text-slate-200 font-semibold">Task-level isolation</span> — every script runs inside its own asyncio task with a full try/except envelope; exceptions are logged to the terminal and die with the task, never with Quart.</span></li>
+          <li class="flex gap-3"><i data-lucide="check" class="w-4 h-4 text-emerald-400 shrink-0 mt-0.5"></i><span><span class="text-slate-200 font-semibold">Handler snapshot hygiene</span> — the engine snapshots the client's event handlers before exec and purges everything the script added on stop. No ghost handlers, ever.</span></li>
+          <li class="flex gap-3"><i data-lucide="check" class="w-4 h-4 text-emerald-400 shrink-0 mt-0.5"></i><span><span class="text-slate-200 font-semibold">Compile pre-check</span> — syntax errors are rejected in-route with the exact line number before any task is spawned.</span></li>
+          <li class="flex gap-3"><i data-lucide="check" class="w-4 h-4 text-emerald-400 shrink-0 mt-0.5"></i><span><span class="text-slate-200 font-semibold">Token-guarded registry</span> — re-running a script on the same account awaits the old task's cancellation first; stale tasks can never evict their replacement.</span></li>
+          <li class="flex gap-3"><i data-lucide="check" class="w-4 h-4 text-emerald-400 shrink-0 mt-0.5"></i><span><span class="text-slate-200 font-semibold">Session persistence</span> — atomic writes to sessions.json + templates.json; on boot, every saved account reconnects and re-authorizes through Telethon.</span></li>
+          <li class="flex gap-3"><i data-lucide="check" class="w-4 h-4 text-emerald-400 shrink-0 mt-0.5"></i><span><span class="text-slate-200 font-semibold">print() redirection</span> — user prints are rerouted into the tagged live terminal, so debugging feels native.</span></li>
+        </ul>
+        <div class="mt-6 rounded-xl border border-amber-500/25 bg-amber-500/5 p-4 text-[12px] text-amber-200/80 flex gap-3">
+          <i data-lucide="info" class="w-4 h-4 shrink-0 mt-0.5 text-amber-400"></i>
+          <span>Execution engine runs the code YOU paste — treat the dashboard as your own admin panel and restrict network access accordingly. Scripts should stay async-native; blocking sync calls would stall the shared event loop.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="relative z-10 border-t border-slate-800/60 py-10">
+  <div class="max-w-7xl mx-auto px-5 md:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+    <div class="flex items-center gap-3">
+      <span class="w-8 h-8 rounded-lg bg-gradient-to-br from-rose-600 to-rose-400 flex items-center justify-center"><i data-lucide="flame" class="w-4 h-4 text-slate-950"></i></span>
+      <span class="mono text-xs text-slate-500 tracking-widest">DEVIL ENGINE v5.0 — QUART · TELETHON · HYPERCORN</span>
+    </div>
+    <span class="mono text-[10px] text-slate-600 tracking-[.2em]">REAL TASKS · REAL CLIENTS · NO MOCKS</span>
+  </div>
+</footer>
+
+<!-- ================= FULL main.py PAYLOAD (escaped <\/script transport, restored on view/copy) ================= -->
+<script type="text/plain" id="payload-mainpy"># ============================================================================
+# DEVIL MULTI-PROJECT MANAGER v5.0
+# Multi-account Telegram custom-script execution dashboard
+# Quart + Telethon + Hypercorn  |  single-file application (UI embedded)
+#
+# Deploy on Render:
+#   build:  pip install -r requirements.txt
+#   start:  hypercorn main:app --bind 0.0.0.0:$PORT
+# ============================================================================
+
+import os
+import re
+import json
+import time
+import inspect
+import asyncio
+import logging
+import traceback
+from collections import deque
+from datetime import datetime, timezone
+
+from quart import Quart, request, jsonify, render_template_string
+from telethon import TelegramClient, events, errors, utils, types
+from telethon.sessions import StringSession
+
+# ----------------------------------------------------------------------------
+# Logging: tagged ring buffer + stdout (Render captures the same stream as UI)
+# ----------------------------------------------------------------------------
+
+LOG_BUFFER = deque(maxlen=600)
+LOG_SEQ = [0]
+
+
+class BufferLogHandler(logging.Handler):
+    def emit(self, record):
+        try:
+            LOG_SEQ[0] += 1
+            LOG_BUFFER.append({
+                "id": LOG_SEQ[0],
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "level": record.levelname,
+                "tag": getattr(record, "tag", "core"),
+                "message": record.getMessage(),
+            })
+        except Exception:
+            self.handleError(record)
+
+
+logger = logging.getLogger("devil")
+logger.setLevel(logging.DEBUG)
+logger.propagate = False
+logger.addHandler(BufferLogHandler())
+_stdout = logging.StreamHandler()
+_stdout.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(message)s"))
+logger.addHandler(_stdout)
+
+
+def emit(level, message, tag="core"):
+    extra = {"tag": tag}
+    getattr(logger, level.lower(), logger.info)(message, extra=extra)
+
+
+# ----------------------------------------------------------------------------
+# App + in-memory state (per Hypercorn worker)
+# ----------------------------------------------------------------------------
+
+app = Quart(__name__)
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SESSIONS_FILE = os.path.join(BASE_DIR, "sessions.json")
+TEMPLATES_FILE = os.path.join(BASE_DIR, "templates.json")
+
+PENDING = {}          # phone -> {"client","phone_code_hash","api_id","api_hash","ts"}
+ACCOUNTS = {}         # phone -> {"client","account","session_string","connected_at"}
+RUNNING = {}          # phone -> {"task","token","name","started_at"}
+PENDING_TTL = 600.0
+STATE_LOCK = asyncio.Lock()
+
+
+def utcnow():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def mask_phone(phone):
+    digits = re.sub(r"\D", "", str(phone))
+    if len(digits) <= 4:
+        return "***"
+    return "+" + digits[:3] + "******" + digits[-2:]
+
+
+def read_json_file(path):
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+            return data if isinstance(data, dict) else {}
+    except FileNotFoundError:
+        return {}
+    except (json.JSONDecodeError, OSError) as exc:
+        emit("WARNING", "Broken JSON store %s (%s) — starting empty", path, exc)
+        return {}
+
+
+def write_json_file(path, data):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh)
+    os.replace(tmp, path)
+
+
+def persist_account(phone):
+    entry = ACCOUNTS[phone]
+    store = read_json_file(SESSIONS_FILE)
+    store[phone] = {
+        "session": entry["session_string"],
+        "api_id": entry["api_id"],
+        "api_hash": entry["api_hash"],
+        "saved_at": utcnow(),
+    }
+    write_json_file(SESSIONS_FILE, store)
+    emit("INFO", "sessions.json: persisted %s", mask_phone(phone), tag=phone)
+
+
+def unpersist_account(phone):
+    store = read_json_file(SESSIONS_FILE)
+    if phone in store:
+        store.pop(phone)
+        write_json_file(SESSIONS_FILE, store)
+
+
+def rpc_error_payload(exc):
+    name = type(exc).__name__
+    if isinstance(exc, errors.FloodWaitError):
+        return 429, "FloodWait: retry after %s seconds" % exc.seconds
+    if isinstance(exc, errors.PhoneNumberInvalidError):
+        return 400, "Phone number is invalid on Telegram."
+    if isinstance(exc, errors.PhoneNumberBannedError):
+        return 403, "This phone number is banned from Telegram."
+    if isinstance(exc, errors.PhoneCodeInvalidError):
+        return 400, "OTP code is invalid. Check and retry."
+    if isinstance(exc, errors.PhoneCodeExpiredError):
+        return 410, "OTP code expired. Request a fresh code."
+    if isinstance(exc, errors.PasswordHashInvalidError):
+        return 400, "Two-factor password is incorrect."
+    if isinstance(exc, errors.ApiIdInvalidError):
+        return 400, "API_ID / API_HASH pair is invalid."
+    return 500, "%s: %s" % (name, exc)
+
+
+async def safe_disconnect(client):
+    try:
+        if client and client.is_connected():
+            await client.disconnect()
+    except Exception as exc:
+        logger.debug("disconnect notice: %s", exc)
+
+
+async def drop_pending(phone):
+    entry = PENDING.pop(phone, None)
+    if entry:
+        await safe_disconnect(entry["client"])
+
+
+# ----------------------------------------------------------------------------
+# Script execution engine
+# ----------------------------------------------------------------------------
+
+def build_script_env(phone):
+    acct = ACCOUNTS[phone]
+
+    def tprint(*args, **_kwargs):
+        emit("INFO", " ".join(str(a) for a in args), tag=phone)
+
+    def tlog(msg, level="INFO"):
+        emit(str(level).upper(), str(msg), tag=phone)
+
+    return {
+        "asyncio": asyncio,
+        "time": time,
+        "re": re,
+        "json": json,
+        "datetime": datetime,
+        "client": acct["client"],
+        "SESSION_STRING": acct["session_string"],
+        "PHONE": phone,
+        "events": events,
+        "errors": errors,
+        "utils": utils,
+        "types": types,
+        "TelegramClient": TelegramClient,
+        "StringSession": StringSession,
+        "print": tprint,
+        "log": tlog,
+    }
+
+
+def handlers_snapshot(client):
+    return {(id(cb), id(builder)) for cb, builder in client.list_event_handlers()}
+
+
+def purge_script_handlers(client, snapshot, phone):
+    removed = 0
+    for cb, builder in client.list_event_handlers():
+        if (id(cb), id(builder)) not in snapshot:
+            try:
+                client.remove_event_handler(cb, builder)
+                removed += 1
+            except (ValueError, KeyError):
+                pass
+    if removed:
+        emit("INFO", "Purged %s script-registered handler(s) from client", removed, tag=phone)
+
+
+async def script_engine(phone, name, code, token):
+    acct = ACCOUNTS[phone]
+    client = acct["client"]
+    snapshot = handlers_snapshot(client)
+    emit("INFO", "Engine online: '%s' compiling…", name, tag=phone)
+    try:
+        compiled = compile(code, "<%s>" % (name or "script"), "exec")
+        env = build_script_env(phone)
+        exec(compiled, env, env)
+        emit("INFO", "'%s' module-level executed on %s", name,
+             acct["account"].get("username") or acct["account"].get("id"), tag=phone)
+
+        main_fn = env.get("main")
+        main_ran = False
+        if inspect.iscoroutinefunction(main_fn):
+            emit("INFO", "'%s': async main() detected — awaiting", name, tag=phone)
+            await main_fn()
+            main_ran = True
+            emit("INFO", "'%s': main() returned", name, tag=phone)
+
+        live = handlers_snapshot(client) - snapshot
+        if live:
+            emit("INFO", "'%s': %s event handler(s) armed — task idles until stopped",
+                 name, len(live), tag=phone)
+            while True:
+                await asyncio.sleep(3600)
+        elif main_ran:
+            emit("INFO", "'%s': work complete, no handlers — engine exiting", name, tag=phone)
+        else:
+            emit("WARNING", "'%s' registered nothing and defines no main() — engine exiting",
+                 name, tag=phone)
+    except asyncio.CancelledError:
+        emit("WARNING", "'%s' cancelled by operator (Stop Task)", name, tag=phone)
+        raise
+    except SyntaxError as se:
+        emit("ERROR", "'%s' SyntaxError line %s: %s", name, se.lineno, se.msg, tag=phone)
+    except Exception:
+        trace = " | ".join(traceback.format_exc(limit=5).splitlines()[-4:])
+        emit("ERROR", "'%s' crashed: %s", name, trace, tag=phone)
+    finally:
+        purge_script_handlers(client, snapshot, phone)
+        cur = RUNNING.get(phone)
+        if cur and cur.get("token") == token:
+            RUNNING.pop(phone, None)
+        emit("INFO", "Engine halted: '%s'", name, tag=phone)
+
+
+def on_task_done(phone, name):
+    def _cb(task):
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            emit("ERROR", "Engine task for '%s' died outside envelope: %s", name, exc, tag=phone)
+    return _cb
+
+
+async def stop_account_task(phone, reason="operator"):
+    entry = RUNNING.pop(phone, None)
+    if not entry:
+        return False
+    entry["task"].cancel()
+    try:
+        await asyncio.wait_for(entry["task"], timeout=4)
+    except (asyncio.CancelledError, asyncio.TimeoutError):
+        pass
+    except Exception as exc:
+        emit("WARNING", "Task teardown raised during %s stop: %s", reason, exc, tag=phone)
+    return True
+
+
+# ----------------------------------------------------------------------------
+# Lifecycle: restore saved sessions, sweep stale OTP attempts
+# ----------------------------------------------------------------------------
+
+async def restore_sessions():
+    store = read_json_file(SESSIONS_FILE)
+    if not store:
+        emit("INFO", "No saved sessions — waiting for first OTP authorization")
+        return
+    for phone, row in list(store.items()):
+        try:
+            client = TelegramClient(
+                StringSession(row["session"]),
+                int(row["api_id"]), row["api_hash"],
+                device_model="DEVIL Engine",
+                system_version="Hypercorn/Quart",
+                app_version="5.0.0")
+            await asyncio.wait_for(client.connect(), timeout=25)
+            if not await client.is_user_authorized():
+                raise ValueError("session dead (auth key unregistered)")
+            me = await client.get_me()
+            ACCOUNTS[phone] = {
+                "client": client,
+                "account": {"id": me.id, "username": me.username,
+                            "first_name": me.first_name, "phone": phone},
+                "session_string": row["session"],
+                "api_id": int(row["api_id"]),
+                "api_hash": row["api_hash"],
+                "connected_at": utcnow(),
+            }
+            emit("INFO", "Session restored: %s as @%s", mask_phone(phone),
+                 me.username or me.id, tag=phone)
+        except Exception as exc:
+            emit("WARNING", "Session restore failed for %s: %s — dropping",
+                 mask_phone(phone), exc)
+            unpersist_account(phone)
+
+
+async def pending_sweeper():
+    while True:
+        await asyncio.sleep(120)
+        now = time.time()
+        stale = [p for p, e in list(PENDING.items()) if now - e["ts"] > PENDING_TTL]
+        for phone in stale:
+            emit("INFO", "Sweeper: expiring stale OTP attempt for %s", mask_phone(phone))
+            await drop_pending(phone)
+
+
+@app.before_serving
+async def boot():
+    emit("INFO", "DEVIL ENGINE v5.0 — Hypercorn worker online, PID %s", os.getpid())
+    emit("INFO", "Routes armed: /api/send-otp /api/verify-otp /api/run-script "
+                 "/api/stop-script /api/delete-account /api/save-template /api/templates "
+                 "/api/logs /api/status /api/health")
+    app.add_background_task(restore_sessions)
+    app.add_background_task(pending_sweeper)
+
+
+@app.after_serving
+async def shutdown():
+    for phone in list(RUNNING):
+        await stop_account_task(phone, reason="shutdown")
+    for phone in list(PENDING):
+        await drop_pending(phone)
+    for phone, entry in list(ACCOUNTS.items()):
+        await safe_disconnect(entry["client"])
+        ACCOUNTS.pop(phone, None)
+    emit("INFO", "Shutdown complete — all tasks cancelled, clients disconnected.")
+
+
+# ----------------------------------------------------------------------------
+# CORS (drive the API from any dashboard origin)
+# ----------------------------------------------------------------------------
+
+@app.before_request
+async def cors_preflight():
+    if request.method == "OPTIONS":
+        return "", 204
+
+
+@app.after_request
+async def cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    return response
+
+
+# ----------------------------------------------------------------------------
+# API: authentication
+# ----------------------------------------------------------------------------
+
+@app.route("/api/send-otp", methods=["POST"])
+async def api_send_otp():
+    data = await request.get_json(force=True, silent=True) or {}
+    try:
+        api_id = int(str(data.get("api_id", "")).strip())
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "api_id must be an integer."}), 400
+    api_hash = str(data.get("api_hash", "")).strip()
+    phone = str(data.get("phone", "")).strip()
+    if not api_hash or not phone:
+        return jsonify({"ok": False, "error": "api_hash and phone are required."}), 400
+
+    if phone in ACCOUNTS:
+        return jsonify({"ok": True, "already_connected": True,
+                        "account": ACCOUNTS[phone]["account"],
+                        "message": "Account already authorized."})
+
+    try:
+        async with STATE_LOCK:
+            await drop_pending(phone)
+            client = TelegramClient(StringSession(), api_id, api_hash,
+                                    device_model="DEVIL Engine",
+                                    system_version="Hypercorn/Quart",
+                                    app_version="5.0.0")
+            await asyncio.wait_for(client.connect(), timeout=25)
+            emit("INFO", "send-otp: MTProto connection up for %s", mask_phone(phone), tag=phone)
+            sent = await client.send_code_request(phone)
+            PENDING[phone] = {"client": client, "phone_code_hash": sent.phone_code_hash,
+                              "api_id": api_id, "api_hash": api_hash, "ts": time.time()}
+        emit("INFO", "send-otp: code dispatched via %s", type(sent.type).__name__, tag=phone)
+        return jsonify({"ok": True, "message": "OTP dispatched via Telegram.",
+                        "code_type": type(sent.type).__name__})
+    except asyncio.TimeoutError:
+        await drop_pending(phone)
+        return jsonify({"ok": False, "error": "Timed out connecting to Telegram DC."}), 504
+    except errors.RPCError as exc:
+        status, msg = rpc_error_payload(exc)
+        emit("WARNING", "send-otp failed: %s", msg, tag=phone)
+        await drop_pending(phone)
+        return jsonify({"ok": False, "error": msg}), status
+    except Exception as exc:
+        logger.exception("send-otp unexpected failure")
+        await drop_pending(phone)
+        return jsonify({"ok": False, "error": "Unexpected: %s" % exc}), 500
+
+
+@app.route("/api/verify-otp", methods=["POST"])
+async def api_verify_otp():
+    data = await request.get_json(force=True, silent=True) or {}
+    phone = str(data.get("phone", "")).strip()
+    code = str(data.get("otp_code", "")).strip().replace(" ", "")
+    password = str(data.get("password", "")).strip()
+    if not phone or not code:
+        return jsonify({"ok": False, "error": "phone and otp_code are required."}), 400
+
+    entry = PENDING.get(phone)
+    if not entry:
+        return jsonify({"ok": False, "error": "No pending login for this phone. "
+                                              "Request a new OTP first."}), 400
+    if time.time() - entry["ts"] > PENDING_TTL:
+        await drop_pending(phone)
+        return jsonify({"ok": False, "error": "OTP attempt expired (10 min). "
+                                              "Request a new code."}), 410
+
+    client = entry["client"]
+    try:
+        if not client.is_connected():
+            await asyncio.wait_for(client.connect(), timeout=25)
+        try:
+            await client.sign_in(phone=phone, code=code,
+                                 phone_code_hash=entry["phone_code_hash"])
+        except errors.SessionPasswordNeededError:
+            emit("INFO", "verify: 2FA cloud password required", tag=phone)
+            if not password:
+                return jsonify({"ok": False, "need_password": True,
+                                "message": "Two-step verification is ON — provide the "
+                                           "cloud password and submit again."})
+            await client.sign_in(password=password)
+
+        me = await client.get_me()
+        session_string = client.session.save()
+        ACCOUNTS[phone] = {
+            "client": client,
+            "account": {"id": me.id, "username": me.username,
+                        "first_name": me.first_name, "phone": phone},
+            "session_string": session_string,
+            "api_id": entry["api_id"],
+            "api_hash": entry["api_hash"],
+            "connected_at": utcnow(),
+        }
+        PENDING.pop(phone, None)
+        persist_account(phone)
+        emit("INFO", "ACCOUNT SAVED: @%s (id=%s)", me.username or "-", me.id, tag=phone)
+        return jsonify({"ok": True, "connected": True,
+                        "account": ACCOUNTS[phone]["account"],
+                        "string_session": session_string,
+                        "message": "Session saved. Account ready for scripting."})
+    except errors.RPCError as exc:
+        status, msg = rpc_error_payload(exc)
+        emit("WARNING", "verify failed: %s", msg, tag=phone)
+        if status == 410:
+            await drop_pending(phone)
+        return jsonify({"ok": False, "error": msg}), status
+    except Exception as exc:
+        logger.exception("verify unexpected failure")
+        return jsonify({"ok": False, "error": "Unexpected: %s" % exc}), 500
+
+
+@app.route("/api/delete-account", methods=["POST"])
+async def api_delete_account():
+    data = await request.get_json(force=True, silent=True) or {}
+    phone = str(data.get("phone", "")).strip()
+    if not phone:
+        return jsonify({"ok": False, "error": "phone is required."}), 400
+    stopped = await stop_account_task(phone, reason="account-delete")
+    entry = ACCOUNTS.pop(phone, None)
+    if not entry:
+        return jsonify({"ok": False, "error": "No such account."}), 404
+    await safe_disconnect(entry["client"])
+    unpersist_account(phone)
+    emit("INFO", "Account deleted (%s script stopped): %s",
+         "and its" if stopped else "no", mask_phone(phone), tag=phone)
+    return jsonify({"ok": True, "message": "Account removed and session purged.",
+                    "stopped_script": stopped})
+
+
+# ----------------------------------------------------------------------------
+# API: script engine
+# ----------------------------------------------------------------------------
+
+@app.route("/api/run-script", methods=["POST"])
+async def api_run_script():
+    data = await request.get_json(force=True, silent=True) or {}
+    phone = str(data.get("phone_number", "") or data.get("phone", "")).strip()
+    code = str(data.get("script_code", ""))
+    name = str(data.get("script_name", "")).strip() or "unnamed-script"
+
+    if not phone:
+        return jsonify({"ok": False, "error": "phone_number is required."}), 400
+    if not code.strip():
+        return jsonify({"ok": False, "error": "script_code is empty."}), 400
+    acct = ACCOUNTS.get(phone)
+    if not acct:
+        return jsonify({"ok": False, "error": "Account not authorized. "
+                                              "Complete OTP verification first."}), 409
+
+    try:
+        compile(code, "<precheck>", "exec")
+    except SyntaxError as se:
+        return jsonify({"ok": False,
+                        "error": "SyntaxError line %s: %s" % (se.lineno, se.msg)}), 400
+
+    client = acct["client"]
+    if not client.is_connected():
+        await asyncio.wait_for(client.connect(), timeout=25)
+
+    async with STATE_LOCK:
+        if phone in RUNNING:
+            old_name = RUNNING[phone]["name"]
+            emit("WARNING", "Replacing running script '%s' with '%s'", old_name, name, tag=phone)
+            await stop_account_task(phone, reason="replace")
+        token = "%s-%s" % (int(time.time() * 1000), os.getpid())
+        task = asyncio.create_task(script_engine(phone, name, code, token),
+                                   name="engine:%s" % phone)
+        task.add_done_callback(on_task_done(phone, name))
+        RUNNING[phone] = {"task": task, "token": token, "name": name,
+                          "started_at": utcnow()}
+    emit("INFO", "Task registered: '%s' on %s", name, mask_phone(phone), tag=phone)
+    return jsonify({"ok": True, "message": "Script launched in isolated asyncio task.",
+                    "script_name": name, "phone": phone, "started_at": RUNNING[phone]["started_at"]})
+
+
+@app.route("/api/stop-script", methods=["POST"])
+async def api_stop_script():
+    data = await request.get_json(force=True, silent=True) or {}
+    phone = str(data.get("phone_number", "") or data.get("phone", "")).strip()
+    if not phone:
+        return jsonify({"ok": False, "error": "phone_number is required."}), 400
+    async with STATE_LOCK:
+        stopped = await stop_account_task(phone, reason="operator")
+    if not stopped:
+        return jsonify({"ok": False, "error": "No running script on this account."}), 409
+    return jsonify({"ok": True, "message": "Task cancelled cleanly — handlers purged."})
+
+
+@app.route("/api/save-template", methods=["POST"])
+async def api_save_template():
+    data = await request.get_json(force=True, silent=True) or {}
+    name = str(data.get("name", "")).strip()
+    code = str(data.get("code", ""))
+    if not name or not code.strip():
+        return jsonify({"ok": False, "error": "name and code are required."}), 400
+    store = read_json_file(TEMPLATES_FILE)
+    store[name] = {"code": code, "saved_at": utcnow()}
+    write_json_file(TEMPLATES_FILE, store)
+    emit("INFO", "Template saved: '%s' (%s bytes)", name, len(code))
+    return jsonify({"ok": True, "message": "Template '%s' saved to templates.json." % name})
+
+
+@app.route("/api/templates", methods=["GET"])
+async def api_templates():
+    store = read_json_file(TEMPLATES_FILE)
+    return jsonify({"ok": True,
+                    "templates": {k: v.get("code", "") for k, v in store.items()}})
+
+
+# ----------------------------------------------------------------------------
+# API: logs / status / health
+# ----------------------------------------------------------------------------
+
+@app.route("/api/logs", methods=["GET"])
+async def api_logs():
+    try:
+        since = int(request.args.get("since", "0"))
+    except ValueError:
+        since = 0
+    fresh = [row for row in LOG_BUFFER if row["id"] > since]
+    return jsonify({"ok": True, "logs": fresh, "latest": LOG_SEQ[0]})
+
+
+@app.route("/api/status", methods=["GET"])
+async def api_status():
+    accounts = []
+    for phone, entry in ACCOUNTS.items():
+        a = dict(entry["account"])
+        a["connected_at"] = entry["connected_at"]
+        a["connected"] = entry["client"].is_connected()
+        a["running_script"] = RUNNING[phone]["name"] if phone in RUNNING else None
+        accounts.append(a)
+    processes = []
+    for phone, row in RUNNING.items():
+        processes.append({"phone": phone, "script_name": row["name"],
+                          "started_at": row["started_at"],
+                          "token_tail": row["token"][-6:]})
+    return jsonify({"ok": True, "server_time": utcnow(), "accounts": accounts,
+                    "processes": processes, "pending_logins": len(PENDING)})
+
+
+@app.route("/api/health", methods=["GET"])
+async def api_health():
+    return jsonify({"ok": True, "ts": utcnow()})
+
+
+# ----------------------------------------------------------------------------
+# Embedded dashboard
+# ----------------------------------------------------------------------------
+
+DASHBOARD_HTML = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DEVIL MULTI-PROJECT MANAGER v5.0</title>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"><\/script>
+<script src="https://unpkg.com/lucide@latest"><\/script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  body { font-family: 'Space Grotesk', system-ui, sans-serif; background: #050508; color: #e2e8f0; min-height: 100vh; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  .card { background: linear-gradient(160deg, rgba(15,18,32,.85), rgba(5,5,10,.92)); border: 1px solid rgba(148,163,184,.12); border-radius: .9rem; }
+  .field { width: 100%; background: rgba(4,4,10,.8); border: 1px solid rgba(148,163,184,.15); border-radius: .55rem; padding: .55rem .75rem; font-family: 'JetBrains Mono', monospace; font-size: .76rem; color: #e2e8f0; outline: none; transition: border-color .25s, box-shadow .25s; }
+  .field:focus { border-color: rgba(244,63,94,.55); box-shadow: 0 0 0 3px rgba(244,63,94,.12); }
+  .field::placeholder { color: #475569; }
+  select.field option { background: #0a0a14; }
+  .flab { font-family: 'JetBrains Mono', monospace; font-size: .58rem; letter-spacing: .16em; color: #8b93a7; display: block; margin-bottom: .3rem; }
+  .btn { transition: all .2s ease; }
+  .btn:active { transform: scale(.97); }
+  .btn:disabled { opacity: .55; pointer-events: none; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { padding: .45rem .5rem; text-align: left; }
+  tbody tr { border-top: 1px solid rgba(148,163,184,.08); }
+  .ed-wrap { display: grid; grid-template-columns: 44px 1fr; }
+  .ed-gutter { margin: 0; padding: .7rem 0; font-family: 'JetBrains Mono', monospace; font-size: .7rem; line-height: 1.55; text-align: right; color: #3b4252; background: rgba(10,10,18,.7); overflow: hidden; user-select: none; white-space: pre; border-right: 1px solid rgba(148,163,184,.08); }
+  .ed-code { padding: .7rem .85rem; font-family: 'JetBrains Mono', monospace; font-size: .7rem; line-height: 1.55; color: #c8d3e8; background: transparent; border: none; outline: none; resize: none; white-space: pre; overflow: auto; caret-color: #fb7185; }
+  .logline { display: grid; grid-template-columns: 66px 54px 92px 1fr; gap: .5rem; padding: .1rem 0; font-family: 'JetBrains Mono', monospace; font-size: .68rem; line-height: 1.5; word-break: break-word; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: #0a0a12; }
+  ::-webkit-scrollbar-thumb { background: #7f1d3a; border-radius: 8px; }
+  .toast { padding: .6rem .85rem; border-radius: .65rem; font-size: .74rem; border: 1px solid; margin-bottom: .5rem; transition: opacity .3s ease, transform .3s ease; opacity: 0; transform: translateY(8px); }
+  .toast.show { opacity: 1; transform: none; }
+  .toast-ok { border-color: rgba(16,185,129,.4); background: rgba(16,185,129,.1); color: #6ee7b7; }
+  .toast-err { border-color: rgba(251,113,133,.45); background: rgba(244,63,94,.12); color: #fda4af; }
+  .toast-warn { border-color: rgba(245,158,11,.4); background: rgba(245,158,11,.1); color: #fcd34d; }
+  .dot { width: 7px; height: 7px; border-radius: 9999px; }
+</style>
+</head>
+<body class="antialiased">
+<div class="fixed inset-0 pointer-events-none">
+  <div class="absolute w-96 h-96 rounded-full bg-rose-600/15 blur-3xl -top-20 -left-20"></div>
+  <div class="absolute w-96 h-96 rounded-full bg-cyan-500/10 blur-3xl bottom-0 right-0"></div>
+</div>
+
+<header class="relative border-b border-slate-800/70 bg-slate-950/80 backdrop-blur sticky top-0 z-30">
+  <div class="max-w-7xl mx-auto px-4 h-14 flex items-center gap-3">
+    <span class="w-8 h-8 rounded-lg bg-gradient-to-br from-rose-600 to-rose-400 flex items-center justify-center">
+      <i data-lucide="flame" class="w-4 h-4 text-slate-950"></i>
+    </span>
+    <div>
+      <div class="font-bold text-sm leading-tight">DEVIL MULTI-PROJECT MANAGER <span class="text-rose-400">v5.0</span></div>
+      <div class="mono text-[8px] text-slate-500 tracking-[.22em]">MULTI-ACCOUNT TELETHON SCRIPT ENGINE</div>
+    </div>
+    <div class="ml-auto flex items-center gap-2">
+      <span id="sv-pulse" class="mono text-[10px] flex items-center gap-1.5 text-rose-300"><span id="sv-dot" class="dot bg-rose-400"></span><span id="sv-text">OFFLINE</span></span>
+      <span id="sv-procs" class="mono text-[10px] px-2.5 py-1 rounded-full border border-cyan-500/40 text-cyan-300 bg-cyan-500/10">0 PROCESSES</span>
+    </div>
+  </div>
+</header>
+
+<main class="relative max-w-7xl mx-auto px-4 py-5 grid lg:grid-cols-12 gap-4">
+  <div class="lg:col-span-5 space-y-4">
+    <section class="card p-4">
+      <h2 class="font-bold text-sm flex items-center gap-2 mb-3"><i data-lucide="key-round" class="w-4 h-4 text-rose-400"></i>Account Authorization</h2>
+      <div class="grid grid-cols-2 gap-2.5">
+        <div><label class="flab" for="in-api-id">API_ID</label><input id="in-api-id" class="field" placeholder="204xxxxx" inputmode="numeric"></div>
+        <div><label class="flab" for="in-api-hash">API_HASH</label><input id="in-api-hash" type="password" class="field" placeholder="0123abc…"></div>
+      </div>
+      <div class="mt-2.5"><label class="flab" for="in-phone">PHONE NUMBER</label><input id="in-phone" class="field" placeholder="+1 555 000 1122"></div>
+      <button id="btn-otp" class="btn mt-3 w-full py-2.5 rounded-lg bg-rose-500 text-slate-950 font-bold text-sm hover:bg-rose-400 flex items-center justify-center gap-2">
+        <i data-lucide="send" class="w-4 h-4"></i><span data-label>Send OTP</span>
+      </button>
+      <div id="otp-block" class="hidden mt-4 pt-3 border-t border-dashed border-slate-700/70">
+        <div class="mono text-[9px] tracking-[.2em] text-emerald-300 mb-2.5">OTP DISPATCHED — CHECK TELEGRAM</div>
+        <div class="grid grid-cols-2 gap-2.5">
+          <div><label class="flab" for="in-otp">OTP CODE</label><input id="in-otp" class="field" placeholder="12345" autocomplete="one-time-code"></div>
+          <div><label class="flab" for="in-2fa">2FA (OPTIONAL)</label><input id="in-2fa" type="password" class="field" placeholder="cloud password"></div>
+        </div>
+        <button id="btn-verify" class="btn mt-3 w-full py-2.5 rounded-lg bg-emerald-500 text-slate-950 font-bold text-sm hover:bg-emerald-400 flex items-center justify-center gap-2">
+          <i data-lucide="shield-check" class="w-4 h-4"></i><span data-label>Verify &amp; Save Session</span>
+        </button>
+        <div id="session-wrap" class="hidden mt-3">
+          <label class="flab" for="out-session">STRING SESSION — SAVED</label>
+          <div class="relative">
+            <textarea id="out-session" readonly class="field h-16 !text-[10px] resize-none pr-8"></textarea>
+            <button id="btn-copy-session" class="absolute top-2 right-2 text-slate-500 hover:text-rose-300"><i data-lucide="copy" class="w-4 h-4"></i></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card p-4">
+      <h2 class="font-bold text-sm flex items-center gap-2 mb-2"><i data-lucide="users" class="w-4 h-4 text-cyan-400"></i>Active Accounts</h2>
+      <div class="overflow-x-auto mono text-[11px]">
+        <table>
+          <thead><tr class="text-slate-600 text-[9px] tracking-widest"><th>PHONE</th><th>STATUS</th><th>RUNNING SCRIPT</th><th class="text-right">ACTION</th></tr></thead>
+          <tbody id="accounts-body"><tr><td colspan="4" class="py-4 text-center text-slate-600">No accounts authorized yet.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card p-4">
+      <h2 class="font-bold text-sm flex items-center gap-2 mb-2"><i data-lucide="activity" class="w-4 h-4 text-emerald-400"></i>Running Processes</h2>
+      <div id="procs-body" class="space-y-2">
+        <p class="mono text-[11px] text-slate-600 text-center py-5">No engines running.</p>
+      </div>
+    </section>
+  </div>
+
+  <div class="lg:col-span-7 space-y-4">
+    <section class="card p-4">
+      <h2 class="font-bold text-sm flex items-center gap-2 mb-3"><i data-lucide="terminal-square" class="w-4 h-4 text-rose-400"></i>Dynamic Script Runner</h2>
+      <div class="grid sm:grid-cols-2 gap-2.5 mb-2.5">
+        <div>
+          <label class="flab" for="run-account">RUN ON ACCOUNT</label>
+          <select id="run-account" class="field"><option value="">— no accounts —</option></select>
+        </div>
+        <div>
+          <label class="flab" for="script-name">SCRIPT NAME</label>
+          <input id="script-name" class="field" placeholder="Cleaner Bot Account 1">
+        </div>
+      </div>
+      <div class="rounded-lg border border-slate-800 overflow-hidden bg-[#07070d]">
+        <div class="flex items-center gap-1.5 px-3 py-2 border-b border-slate-800 bg-slate-950/60">
+          <span class="w-2.5 h-2.5 rounded-full bg-rose-500/70"></span>
+          <span class="w-2.5 h-2.5 rounded-full bg-amber-500/70"></span>
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500/70"></span>
+          <span class="mono text-[9px] text-slate-500 ml-1">script.py — telethon context</span>
+          <div class="ml-auto flex items-center gap-1.5">
+            <select id="templates" class="field !py-1 !px-2 !text-[10px] !w-32"><option value="">templates…</option></select>
+            <button id="btn-load-tpl" class="btn mono text-[10px] px-2.5 py-1 rounded border border-slate-700 text-slate-400 hover:border-slate-500">Load</button>
+          </div>
+        </div>
+        <div class="ed-wrap">
+          <pre id="gutter" class="ed-gutter">1</pre>
+          <textarea id="code" class="ed-code" style="min-height:330px;max-height:440px" spellcheck="false" wrap="off"></textarea>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-1.5 mt-2.5 mono text-[9px]">
+        <span class="px-2 py-1 rounded-full border border-emerald-500/40 text-emerald-300 bg-emerald-500/10">client</span>
+        <span class="px-2 py-1 rounded-full border border-emerald-500/40 text-emerald-300 bg-emerald-500/10">SESSION_STRING</span>
+        <span class="px-2 py-1 rounded-full border border-cyan-500/40 text-cyan-300 bg-cyan-500/10">PHONE · events · errors · utils · types</span>
+        <span class="px-2 py-1 rounded-full border border-slate-700 text-slate-400">log("msg") · print → terminal</span>
+      </div>
+      <div class="grid sm:grid-cols-2 gap-2.5 mt-3">
+        <button id="btn-run" class="btn py-2.5 rounded-lg bg-gradient-to-r from-rose-500 to-rose-400 text-slate-950 font-bold text-sm hover:opacity-95 flex items-center justify-center gap-2">
+          <i data-lucide="play" class="w-4 h-4"></i><span data-label>Run Script on Selected Account</span>
+        </button>
+        <button id="btn-save-tpl" class="btn py-2.5 rounded-lg border border-cyan-500/40 text-cyan-300 font-bold text-sm hover:bg-cyan-500/10 flex items-center justify-center gap-2">
+          <i data-lucide="save" class="w-4 h-4"></i><span data-label>Save Code Template</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="card overflow-hidden">
+      <div class="flex items-center gap-2 px-4 py-2.5 border-b border-slate-800 bg-slate-950/60">
+        <span class="w-2.5 h-2.5 rounded-full bg-rose-500/70"></span>
+        <span class="w-2.5 h-2.5 rounded-full bg-amber-500/70"></span>
+        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500/70"></span>
+        <span class="mono text-[10px] text-slate-400 ml-1">devil://live-terminal</span>
+        <div class="ml-auto flex items-center gap-1.5">
+          <input id="in-filter" class="field !py-1 !px-2 !text-[10px] !w-28" placeholder="filter…">
+          <button id="btn-pause" class="btn mono text-[10px] px-2 py-1 rounded border border-slate-700 text-slate-400 hover:border-slate-500"><span data-label>Pause</span></button>
+          <button id="btn-clear" class="btn mono text-[10px] px-2 py-1 rounded border border-slate-700 text-slate-400 hover:border-slate-500">Clear</button>
+        </div>
+      </div>
+      <div id="term-body" class="h-[340px] overflow-y-auto px-4 py-3">
+        <div class="logline"><span class="text-slate-600">--:--:--</span><span class="text-slate-500 font-semibold">SYS   </span><span class="text-slate-500">[core]</span><span class="text-slate-500">Terminal attached. Streaming GET /api/logs…</span></div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<div id="toasts" class="fixed bottom-4 right-4 z-50 w-80"></div>
+
+<script>
+(function () {
+  var state = { since: 0, paused: false, filter: "", accounts: [], selectedPhone: "" };
+
+  var DEFAULT_SCRIPT = [
+    "# Sample engine — /status command bot + incoming audit",
+    "# Injected globals: client, SESSION_STRING, PHONE, events, errors,",
+    "# utils, types, asyncio, log(msg), print(...) -> live terminal",
+    "",
+    "COUNTER = {\"n\": 0}",
+    "",
+    "@client.on(events.NewMessage(pattern=r\"^/status$\"))",
+    "async def status_cmd(event):",
+    "    COUNTER[\"n\"] += 1",
+    "    me = await client.get_me()",
+    "    await event.reply(\"Engine alive as @\" + str(me.username or me.id) + \" | hits: \" + str(COUNTER[\"n\"]))",
+    "",
+    "@client.on(events.NewMessage(incoming=True))",
+    "async def audit(event):",
+    "    log(\"incoming msg %s in chat %s\" % (event.id, event.chat_id))",
+    "",
+    "async def main():",
+    "    me = await client.get_me()",
+    "    print(\"Booted as\", me.username or me.id)",
+    "    print(\"Send /status in Saved Messages to test the bot.\")",
+    ""
+  ].join("\n");
+
+  function $(id) { return document.getElementById(id); }
+  function val(id) { var el = $(id); return el ? el.value.trim() : ""; }
+  function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+  function toast(msg, kind) {
+    var div = document.createElement("div");
+    div.className = "toast " + (kind === "error" ? "toast-err" : (kind === "warn" ? "toast-warn" : "toast-ok"));
+    div.textContent = msg;
+    $("toasts").appendChild(div);
+    setTimeout(function () { div.classList.add("show"); }, 10);
+    setTimeout(function () { div.classList.remove("show"); setTimeout(function () { div.remove(); }, 300); }, 4600);
+  }
+
+  function setBusy(id, busy, busyText) {
+    var b = $(id);
+    if (!b) return;
+    b.disabled = busy;
+    var label = b.querySelector("[data-label]");
+    if (label) {
+      if (!label.dataset.orig) label.dataset.orig = label.textContent;
+      label.textContent = busy ? (busyText || "Working…") : label.dataset.orig;
+    }
+  }
+
+  async function api(path, opts) {
+    var res = await fetch(path, opts || {});
+    return res;
+  }
+
+  async function post(path, payload) {
+    var res = await api(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    var data = null;
+    try { data = await res.json(); } catch (e) { data = { ok: false, error: "HTTP " + res.status }; }
+    return { status: res.status, data: data };
+  }
+
+  // ---------- auth ----------
+  async function sendOtp() {
+    var apiId = parseInt(val("in-api-id"), 10);
+    var payload = { api_id: apiId, api_hash: val("in-api-hash"), phone: val("in-phone") };
+    if (!apiId || !payload.api_hash || !payload.phone) { toast("Fill API_ID, API_HASH and phone.", "warn"); return; }
+    setBusy("btn-otp", true, "Dispatching…");
+    try {
+      var r = await post("/api/send-otp", payload);
+      if (r.data.already_connected) { toast("Account already authorized.", "ok"); refreshStatus(); return; }
+      if (!r.data.ok) { toast(r.data.error || "send-otp failed (" + r.status + ")", "error"); return; }
+      $("otp-block").classList.remove("hidden");
+      toast("OTP dispatched (" + (r.data.code_type || "app") + ").", "ok");
+    } catch (e) { toast("Network error: " + e.message, "error"); }
+    finally { setBusy("btn-otp", false); }
+  }
+
+  async function verifyOtp() {
+    var payload = { phone: val("in-phone"), otp_code: val("in-otp"), password: val("in-2fa") };
+    if (!payload.phone || !payload.otp_code) { toast("Phone and OTP code required.", "warn"); return; }
+    setBusy("btn-verify", true, "Verifying…");
+    try {
+      var r = await post("/api/verify-otp", payload);
+      if (r.data.need_password) { toast(r.data.message || "2FA password required.", "warn"); $("in-2fa").focus(); return; }
+      if (!r.data.ok) { toast(r.data.error || "verify failed (" + r.status + ")", "error"); return; }
+      if (r.data.string_session) {
+        $("session-wrap").classList.remove("hidden");
+        $("out-session").value = r.data.string_session;
+      }
+      toast("Saved: @" + (r.data.account.username || r.data.account.id), "ok");
+      refreshStatus();
+    } catch (e) { toast("Network error: " + e.message, "error"); }
+    finally { setBusy("btn-verify", false); }
+  }
+
+  async function deleteAccount(phone) {
+    if (!window.confirm("Delete account " + phone + " and stop its script?")) return;
+    try {
+      var r = await post("/api/delete-account", { phone: phone });
+      if (!r.data.ok) { toast(r.data.error || "delete failed", "error"); return; }
+      toast("Account removed.", "ok");
+      refreshStatus();
+    } catch (e) { toast("Network error: " + e.message, "error"); }
+  }
+
+  // ---------- script engine ----------
+  async function runScript() {
+    var phone = val("run-account");
+    var payload = { phone_number: phone, script_code: $("code").value, script_name: val("script-name") };
+    if (!phone) { toast("Select an account first.", "warn"); return; }
+    if (!payload.script_code.trim()) { toast("Editor is empty.", "warn"); return; }
+    setBusy("btn-run", true, "Launching…");
+    try {
+      var r = await post("/api/run-script", payload);
+      if (!r.data.ok) { toast(r.data.error || "run failed (" + r.status + ")", "error"); return; }
+      toast("Engine launched: " + r.data.script_name, "ok");
+      refreshStatus();
+    } catch (e) { toast("Network error: " + e.message, "error"); }
+    finally { setBusy("btn-run", false); }
+  }
+
+  async function stopScript(phone) {
+    try {
+      var r = await post("/api/stop-script", { phone_number: phone });
+      if (!r.data.ok) { toast(r.data.error || "stop failed", "error"); return; }
+      toast("Task cancelled.", "ok");
+      refreshStatus();
+    } catch (e) { toast("Network error: " + e.message, "error"); }
+  }
+
+  async function saveTemplate() {
+    var payload = { name: val("script-name") || "untitled-" + Date.now(), code: $("code").value };
+    if (!payload.code.trim()) { toast("Editor is empty.", "warn"); return; }
+    setBusy("btn-save-tpl", true, "Saving…");
+    try {
+      var r = await post("/api/save-template", payload);
+      if (!r.data.ok) { toast(r.data.error || "save failed", "error"); return; }
+      toast(r.data.message || "Template saved.", "ok");
+      loadTemplateList();
+    } catch (e) { toast("Network error: " + e.message, "error"); }
+    finally { setBusy("btn-save-tpl", false); }
+  }
+
+  var TEMPLATE_CACHE = {};
+  async function loadTemplateList() {
+    try {
+      var res = await api("/api/templates");
+      var j = await res.json();
+      TEMPLATE_CACHE = j.templates || {};
+      var sel = $("templates");
+      sel.innerHTML = '<option value="">templates…</option>';
+      Object.keys(TEMPLATE_CACHE).forEach(function (k) {
+        var o = document.createElement("option");
+        o.value = k; o.textContent = k;
+        sel.appendChild(o);
+      });
+    } catch (e) { /* offline */ }
+  }
+
+  // ---------- rendering ----------
+  function renderAccounts(accounts) {
+    var body = $("accounts-body");
+    if (!accounts.length) {
+      body.innerHTML = '<tr><td colspan="4" class="py-4 text-center text-slate-600">No accounts authorized yet.</td></tr>';
+      return;
+    }
+    body.innerHTML = accounts.map(function (a) {
+      var statusDot = a.connected
+        ? '<span class="inline-flex items-center gap-1.5 text-emerald-300"><span class="dot bg-emerald-400"></span>ONLINE</span>'
+        : '<span class="inline-flex items-center gap-1.5 text-slate-500"><span class="dot bg-slate-500"></span>IDLE</span>';
+      var script = a.running_script
+        ? '<span class="text-rose-300">' + esc(a.running_script) + "</span>"
+        : '<span class="text-slate-600">—</span>';
+      return "<tr>" +
+        "<td class='mono'>" + esc(a.phone) + "</td>" +
+        "<td>" + statusDot + "</td>" +
+        "<td>" + script + "</td>" +
+        "<td class='text-right'><button data-del='" + esc(a.phone) + "' class='btn mono text-[10px] px-2 py-1 rounded border border-rose-500/50 text-rose-300 hover:bg-rose-500/10'>DELETE</button></td>" +
+      "</tr>";
+    }).join("");
+    Array.prototype.forEach.call(body.querySelectorAll("[data-del]"), function (btn) {
+      btn.addEventListener("click", function () { deleteAccount(btn.getAttribute("data-del")); });
+    });
+
+    var sel = $("run-account");
+    var keep = sel.value;
+    sel.innerHTML = accounts.length ? "" : '<option value="">— no accounts —</option>';
+    accounts.forEach(function (a) {
+      var o = document.createElement("option");
+      o.value = a.phone;
+      o.textContent = a.phone + (a.username ? " (@" + a.username + ")" : "");
+      sel.appendChild(o);
+    });
+    if (keep) sel.value = keep;
+  }
+
+  function renderProcs(processes, serverTime) {
+    var host = $("procs-body");
+    var chip = $("sv-procs");
+    chip.textContent = processes.length + (processes.length === 1 ? " PROCESS" : " PROCESSES");
+    if (!processes.length) {
+      host.innerHTML = '<p class="mono text-[11px] text-slate-600 text-center py-5">No engines running.</p>';
+      return;
+    }
+    host.innerHTML = processes.map(function (p) {
+      var started = Date.parse(p.started_at);
+      var up = isNaN(started) ? "—" : fmtUptime(Math.max(0, Date.now() - started));
+      return '<div class="card p-3 flex items-center gap-3 proc-card">' +
+        '<span class="dot bg-rose-400 shrink-0"></span>' +
+        '<div class="min-w-0 flex-1">' +
+          '<div class="mono text-[11px] font-semibold text-rose-200 truncate">' + esc(p.script_name) + "</div>" +
+          '<div class="mono text-[9px] text-slate-500 truncate">' + esc(p.phone) + " · up " + up + "</div>" +
+        "</div>" +
+        "<button data-stop='" + esc(p.phone) + "' class='btn mono text-[10px] px-2.5 py-1.5 rounded border border-rose-500/50 text-rose-300 hover:bg-rose-500/10 shrink-0'>STOP</button>" +
+      "</div>";
+    }).join("");
+    Array.prototype.forEach.call(host.querySelectorAll("[data-stop]"), function (btn) {
+      btn.addEventListener("click", function () { stopScript(btn.getAttribute("data-stop")); });
+    });
+  }
+
+  function fmtUptime(ms) {
+    var s = Math.floor(ms / 1000);
+    var h = Math.floor(s / 3600); s -= h * 3600;
+    var m = Math.floor(s / 60); s -= m * 60;
+    return (h ? h + "h " : "") + (m ? m + "m " : "") + s + "s";
+  }
+
+  function tagColor(tag) {
+    var palette = ["text-rose-300", "text-cyan-300", "text-emerald-300", "text-amber-300", "text-violet-300", "text-pink-300"];
+    if (tag === "core") return "text-slate-500";
+    var h = 0;
+    for (var i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) >>> 0;
+    return palette[h % palette.length];
+  }
+
+  function appendLog(row) {
+    if (state.filter) {
+      var hay = (row.level + " " + row.tag + " " + row.message).toLowerCase();
+      if (hay.indexOf(state.filter) === -1) return;
+    }
+    var host = $("term-body");
+    var lvl = String(row.level || "INFO").toUpperCase();
+    var lvlCls = (lvl === "ERROR" || lvl === "CRITICAL") ? "text-rose-400" : (lvl === "WARNING" ? "text-amber-400" : (lvl === "DEBUG" ? "text-slate-500" : "text-cyan-300"));
+    var time = String(row.ts || "").split("T")[1] || "";
+    time = time.replace("Z", "").split(".")[0].split("+")[0] || "--:--:--";
+    var div = document.createElement("div");
+    div.className = "logline";
+    div.innerHTML = '<span class="text-slate-600">' + esc(time) + '</span>' +
+      '<span class="' + lvlCls + ' font-semibold">' + esc((lvl + "      ").slice(0, 6)) + '</span>' +
+      '<span class="' + tagColor(String(row.tag || "core")) + ' truncate">[' + esc(String(row.tag || "core")) + "]</span>" +
+      '<span class="text-slate-300">' + esc(row.message) + "</span>";
+    host.appendChild(div);
+    while (host.children.length > 260) host.removeChild(host.firstChild);
+    var nearBottom = host.scrollHeight - host.scrollTop - host.clientHeight < 48;
+    if (nearBottom && !state.paused) host.scrollTop = host.scrollHeight;
+  }
+
+  // ---------- polling ----------
+  var online = false;
+  function setServer(on) {
+    online = on;
+    $("sv-text").textContent = on ? "ONLINE" : "OFFLINE";
+    $("sv-dot").className = "dot " + (on ? "bg-emerald-400" : "bg-rose-400");
+    $("sv-pulse").className = "mono text-[10px] flex items-center gap-1.5 " + (on ? "text-emerald-300" : "text-rose-300");
+  }
+
+  async function pollLogs() {
+    try {
+      var res = await api("/api/logs?since=" + state.since);
+      var j = await res.json();
+      (j.logs || []).forEach(appendLog);
+      if (typeof j.latest === "number") state.since = j.latest;
+      setServer(true);
+      setTimeout(pollLogs, 1500);
+    } catch (e) {
+      setServer(false);
+      setTimeout(pollLogs, 4000);
+    }
+  }
+
+  async function refreshStatus() {
+    try {
+      var res = await api("/api/status");
+      var j = await res.json();
+      renderAccounts(j.accounts || []);
+      renderProcs(j.processes || [], j.server_time);
+      setServer(true);
+    } catch (e) { setServer(false); }
+    setTimeout(refreshStatus, 4000);
+  }
+
+  // ---------- editor ----------
+  function syncGutter() {
+    var lines = $("code").value.split("\n").length;
+    var buf = [];
+    for (var i = 1; i <= lines; i++) buf.push(i);
+    $("gutter").textContent = buf.join("\n");
+  }
+
+  function initEditor() {
+    var code = $("code");
+    code.value = DEFAULT_SCRIPT;
+    syncGutter();
+    code.addEventListener("input", syncGutter);
+    code.addEventListener("scroll", function () { $("gutter").scrollTop = code.scrollTop; });
+    code.addEventListener("keydown", function (e) {
+      if (e.key === "Tab") {
+        e.preventDefault();
+        var s = this.selectionStart, en = this.selectionEnd;
+        this.value = this.value.slice(0, s) + "    " + this.value.slice(en);
+        this.selectionStart = this.selectionEnd = s + 4;
+        syncGutter();
+      }
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    $("btn-otp").addEventListener("click", sendOtp);
+    $("btn-verify").addEventListener("click", verifyOtp);
+    $("btn-run").addEventListener("click", runScript);
+    $("btn-save-tpl").addEventListener("click", saveTemplate);
+    $("btn-copy-session").addEventListener("click", function () {
+      var el = $("out-session");
+      var done = function () { toast("Session copied — guard it like a password.", "ok"); };
+      el.select();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(el.value).then(done, function () { document.execCommand("copy"); done(); });
+      } else { document.execCommand("copy"); done(); }
+    });
+    $("btn-load-tpl").addEventListener("click", function () {
+      var k = val("templates");
+      if (!k || !TEMPLATE_CACHE[k]) { toast("Pick a template first.", "warn"); return; }
+      $("code").value = TEMPLATE_CACHE[k];
+      $("script-name").value = k;
+      syncGutter();
+      toast("Template '" + k + "' loaded.", "ok");
+    });
+    $("btn-clear").addEventListener("click", function () { $("term-body").innerHTML = ""; });
+    $("in-filter").addEventListener("input", function () { state.filter = this.value.trim().toLowerCase(); });
+    $("btn-pause").addEventListener("click", function () {
+      state.paused = !state.paused;
+      var l = this.querySelector("[data-label]");
+      if (l) l.textContent = state.paused ? "Resume" : "Pause";
+    });
+    if (window.lucide) lucide.createIcons();
+    initEditor();
+    loadTemplateList();
+    pollLogs();
+    refreshStatus();
+  });
+})();
+<\/script>
+</body>
+</html>
+"""
+
+
+@app.route("/", methods=["GET"])
+async def dashboard():
+    return await render_template_string(DASHBOARD_HTML)
+
+
+# ----------------------------------------------------------------------------
+# Entrypoint (local dev). On Render: hypercorn main:app --bind 0.0.0.0:$PORT
+# ----------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+</script>
+
+<!-- ================= app logic ================= -->
+<script>
+(function () {
+  "use strict";
+
+  // ---------- payload extraction ----------
+  const rawEl = document.getElementById("payload-mainpy");
+  const MAIN_PY = rawEl.textContent.replace(/<\\\/script/g, "<" + "/script");
+  const REQUIREMENTS = [
+    "quart==0.19.6",
+    "telethon==1.36.0",
+    "hypercorn==0.17.3",
+    "cryptg==0.4.0",
+    ""
+  ].join("\n");
+  const RENDER_YAML = [
+    "services:",
+    "  - type: web",
+    "    name: devil-engine",
+    "    runtime: python",
+    "    region: frankfurt",
+    "    plan: free",
+    "    buildCommand: pip install -r requirements.txt",
+    "    startCommand: hypercorn main:app --bind 0.0.0.0:$PORT",
+    "    autoDeploy: true",
+    ""
+  ].join("\n");
+  const FILES = { "main.py": MAIN_PY, "requirements.txt": REQUIREMENTS, "render.yaml": RENDER_YAML };
+
+  // ---------- highlighting ----------
+  function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  const PY_TOK = /("""[\s\S]*?"""|'''[\s\S]*?'''|fr?\"(?:\\.|[^\"\\\n])*\"|fr?'(?:\\.|[^'\\\n])*')|(#[^\n]*)|(\b(?:False|None|True|and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield)\b)|(@[\w\.]+(?:\([^\n]*\))?)|(\b\d[\d_]*(?:\.\d+)?\b)/g;
+
+  function hlPython(src) {
+    let out = "", last = 0;
+    src.replace(PY_TOK, function (m, str, com, kw, dec, num, off) {
+      out += esc(src.slice(last, off));
+      let cls = null;
+      if (str) cls = "tok-str";
+      else if (com) cls = "tok-com";
+      else if (kw) cls = "tok-kw";
+      else if (dec) cls = "tok-dec";
+      else if (num) cls = "tok-num";
+      out += cls ? '<span class="' + cls + '">' + esc(m) + "</span>" : esc(m);
+      last = off + m.length;
+      return m;
+    });
+    out += esc(src.slice(last));
+    return out.split("\n").map(function (l) { return '<span class="cl">' + (l || " ") + "</span>"; }).join("");
+  }
+  function hlPlain(src) {
+    return esc(src).split("\n").map(function (l) { return '<span class="cl">' + (l || " ") + "</span>"; }).join("");
+  }
+
+  let activeFile = "main.py";
+  const view = document.getElementById("src-view");
+  function renderTab(name) {
+    activeFile = name;
+    const src = FILES[name].replace(/^\n/, "").trimEnd();
+    view.innerHTML = name === "main.py" ? hlPython(src) : hlPlain(src);
+    document.getElementById("src-lines").textContent = src.split("\n").length;
+    document.getElementById("src-bytes").textContent = (new Blob([src]).size / 1024).toFixed(1);
+    document.querySelectorAll(".src-tab").forEach(function (t) {
+      const on = t.dataset.tab === name;
+      t.classList.toggle("border-rose-400", on);
+      t.classList.toggle("text-rose-300", on);
+      t.classList.toggle("bg-slate-900/60", on);
+      t.classList.toggle("border-transparent", !on);
+      t.classList.toggle("text-slate-500", !on);
+    });
+  }
+  document.querySelectorAll(".src-tab").forEach(function (t) {
+    t.addEventListener("click", function () { renderTab(t.dataset.tab); });
+  });
+
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(function () { legacyCopy(text); });
+    } else legacyCopy(text);
+  }
+  function legacyCopy(text) {
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); } catch (e) { /* denied */ }
+    ta.remove();
+  }
+  document.getElementById("src-copy").addEventListener("click", function () { copyText(FILES[activeFile]); });
+  document.getElementById("src-dl").addEventListener("click", function () {
+    const blob = new Blob([FILES[activeFile]], { type: "text/plain;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = activeFile;
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 400);
+  });
+  document.getElementById("nav-copy-py").addEventListener("click", function () { copyText(MAIN_PY); });
+  document.getElementById("nav-copy-req").addEventListener("click", function () { copyText(REQUIREMENTS); });
+  document.getElementById("hero-copy-cmd").addEventListener("click", function () {
+    copyText("hypercorn main:app --bind 0.0.0.0:$PORT");
+  });
+  renderTab("main.py");
+
+  // ---------- reveal + glow ----------
+  const io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("vis"); io.unobserve(e.target); } });
+  }, { threshold: 0.08 });
+  document.querySelectorAll(".reveal").forEach(function (el) { io.observe(el); });
+  const glow = document.getElementById("cursor-glow");
+  let gx = innerWidth / 2, gy = 240, tx = gx, ty = gy;
+  addEventListener("mousemove", function (e) { tx = e.clientX; ty = e.clientY; });
+  (function loopGlow() {
+    gx += (tx - gx) * 0.08; gy += (ty - gy) * 0.08;
+    glow.style.left = gx + "px"; glow.style.top = gy + "px";
+    requestAnimationFrame(loopGlow);
+  })();
+
+  // ====================================================================
+  // LIVE DECK — wired to the real API (same routes as the embedded UI)
+  // ====================================================================
+  const D = {
+    base: localStorage.getItem("dv_base") || "",
+    since: 0, paused: false, filter: "", online: false
+  };
+  const $d = function (id) { return document.getElementById(id); };
+  const dval = function (id) { const el = $d(id); return el ? el.value.trim() : ""; };
+  const desc = esc;
+
+  const DEFAULT_SCRIPT = [
+    "# Sample engine — /status command bot + incoming audit",
+    "# Injected globals: client, SESSION_STRING, PHONE, events, errors,",
+    "# utils, types, asyncio, log(msg), print(...) -> live terminal",
+    "",
+    "COUNTER = {\"n\": 0}",
+    "",
+    "@client.on(events.NewMessage(pattern=r\"^/status$\"))",
+    "async def status_cmd(event):",
+    "    COUNTER[\"n\"] += 1",
+    "    me = await client.get_me()",
+    "    await event.reply(\"Engine alive as @\" + str(me.username or me.id) + \" | hits: \" + str(COUNTER[\"n\"]))",
+    "",
+    "@client.on(events.NewMessage(incoming=True))",
+    "async def audit(event):",
+    "    log(\"incoming msg %s in chat %s\" % (event.id, event.chat_id))",
+    "",
+    "async def main():",
+    "    me = await client.get_me()",
+    "    print(\"Booted as\", me.username or me.id)",
+    "    print(\"Send /status in Saved Messages to test the bot.\")",
+    ""
+  ].join("\n");
+
+  function dToast(msg, kind) {
+    const host = document.createElement("div");
+    host.className = "toast show " + (kind === "error" ? "toast-err" : (kind === "warn" ? "toast-warn" : "toast-ok"));
+    host.textContent = msg;
+    document.body.appendChild(host);
+    host.style.position = "fixed"; host.style.right = "16px"; host.style.bottom = (16 + document.querySelectorAll("body > .toast").length * 0) + "px";
+    host.style.zIndex = "60"; host.style.maxWidth = "320px";
+    document.querySelectorAll("body > .toast").forEach(function (t, i) { t.style.bottom = (16 + i * 52) + "px"; });
+    setTimeout(function () { host.remove(); }, 4200);
+  }
+
+  function setDBusy(id, busy, busyText) {
+    const b = $d(id);
+    if (!b) return;
+    b.disabled = busy;
+    const label = b.querySelector("[data-label]");
+    if (label) {
+      if (!label.dataset.orig) label.dataset.orig = label.textContent;
+      label.textContent = busy ? (busyText || "Working…") : label.dataset.orig;
+    }
+  }
+
+  async function dApi(path, opts) { return fetch(D.base + path, opts || {}); }
+  async function dPost(path, payload) {
+    const res = await dApi(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    let data = null;
+    try { data = await res.json(); } catch (e) { data = { ok: false, error: "HTTP " + res.status }; }
+    return { status: res.status, data: data };
+  }
+
+  function setDState(on) {
+    D.online = on;
+    $d("dv-offline").classList.toggle("hidden", on);
+    const chip = $d("dv-chip-server");
+    if (on) { chip.className = "chip chip-on"; chip.innerHTML = '<span class="dot dot-blink"></span>SERVER ONLINE'; }
+    else { chip.className = "chip chip-err"; chip.innerHTML = '<span class="dot dot-blink"></span>SERVER OFFLINE'; }
+  }
+
+  // auth actions
+  $d("dv-btn-otp").addEventListener("click", async function () {
+    const apiId = parseInt(dval("dv-api-id"), 10);
+    const payload = { api_id: apiId, api_hash: dval("dv-api-hash"), phone: dval("dv-phone") };
+    if (!apiId || !payload.api_hash || !payload.phone) { dToast("Fill API_ID, API_HASH and phone.", "warn"); return; }
+    setDBusy("dv-btn-otp", true, "Dispatching…");
+    try {
+      const r = await dPost("/api/send-otp", payload);
+      if (r.data.already_connected) { dToast("Account already authorized.", "ok"); return; }
+      if (!r.data.ok) { dToast(r.data.error || "send-otp failed (" + r.status + ")", "error"); return; }
+      $d("dv-otp-block").classList.remove("hidden");
+      dToast("OTP dispatched (" + (r.data.code_type || "app") + ").", "ok");
+    } catch (e) { dToast("Engine unreachable — start hypercorn or set API base.", "error"); }
+    finally { setDBusy("dv-btn-otp", false); }
+  });
+
+  $d("dv-btn-verify").addEventListener("click", async function () {
+    const payload = { phone: dval("dv-phone"), otp_code: dval("dv-otp"), password: dval("dv-2fa") };
+    if (!payload.phone || !payload.otp_code) { dToast("Phone and OTP code required.", "warn"); return; }
+    setDBusy("dv-btn-verify", true, "Verifying…");
+    try {
+      const r = await dPost("/api/verify-otp", payload);
+      if (r.data.need_password) { dToast(r.data.message || "2FA password required.", "warn"); $d("dv-2fa").focus(); return; }
+      if (!r.data.ok) { dToast(r.data.error || "verify failed (" + r.status + ")", "error"); return; }
+      if (r.data.string_session) {
+        $d("dv-session-wrap").classList.remove("hidden");
+        $d("dv-out-session").value = r.data.string_session;
+      }
+      dToast("Saved: @" + (r.data.account.username || r.data.account.id), "ok");
+      dRefreshOnce();
+    } catch (e) { dToast("Engine unreachable while verifying.", "error"); }
+    finally { setDBusy("dv-btn-verify", false); }
+  });
+
+  $d("dv-btn-copy-session").addEventListener("click", function () {
+    copyText($d("dv-out-session").value);
+    dToast("Session copied — guard it like a password.", "ok");
+  });
+
+  async function dDeleteAccount(phone) {
+    if (!window.confirm("Delete account " + phone + " and stop its script?")) return;
+    try {
+      const r = await dPost("/api/delete-account", { phone: phone });
+      if (!r.data.ok) { dToast(r.data.error || "delete failed", "error"); return; }
+      dToast("Account removed.", "ok");
+      dRefreshOnce();
+    } catch (e) { dToast("Engine unreachable.", "error"); }
+  }
+
+  // engine actions
+  $d("dv-btn-run").addEventListener("click", async function () {
+    const payload = { phone_number: dval("dv-run-account"), script_code: $d("dv-code").value, script_name: dval("dv-script-name") };
+    if (!payload.phone_number) { dToast("Select an account first.", "warn"); return; }
+    if (!payload.script_code.trim()) { dToast("Editor is empty.", "warn"); return; }
+    setDBusy("dv-btn-run", true, "Launching…");
+    try {
+      const r = await dPost("/api/run-script", payload);
+      if (!r.data.ok) { dToast(r.data.error || "run failed (" + r.status + ")", "error"); return; }
+      dToast("Engine launched: " + r.data.script_name, "ok");
+      dRefreshOnce();
+    } catch (e) { dToast("Engine unreachable while launching.", "error"); }
+    finally { setDBusy("dv-btn-run", false); }
+  });
+
+  async function dStopScript(phone) {
+    try {
+      const r = await dPost("/api/stop-script", { phone_number: phone });
+      if (!r.data.ok) { dToast(r.data.error || "stop failed", "error"); return; }
+      dToast("Task cancelled.", "ok");
+      dRefreshOnce();
+    } catch (e) { dToast("Engine unreachable.", "error"); }
+  }
+
+  $d("dv-btn-save-tpl").addEventListener("click", async function () {
+    const payload = { name: dval("dv-script-name") || "untitled-" + Date.now(), code: $d("dv-code").value };
+    if (!payload.code.trim()) { dToast("Editor is empty.", "warn"); return; }
+    setDBusy("dv-btn-save-tpl", true, "Saving…");
+    try {
+      const r = await dPost("/api/save-template", payload);
+      if (!r.data.ok) { dToast(r.data.error || "save failed", "error"); return; }
+      dToast(r.data.message || "Template saved.", "ok");
+      dLoadTemplates();
+    } catch (e) { dToast("Engine unreachable.", "error"); }
+    finally { setDBusy("dv-btn-save-tpl", false); }
+  });
+
+  let TPL_CACHE = {};
+  async function dLoadTemplates() {
+    try {
+      const res = await dApi("/api/templates");
+      const j = await res.json();
+      TPL_CACHE = j.templates || {};
+      const sel = $d("dv-templates");
+      sel.innerHTML = '<option value="">templates…</option>';
+      Object.keys(TPL_CACHE).forEach(function (k) {
+        const o = document.createElement("option");
+        o.value = k; o.textContent = k;
+        sel.appendChild(o);
+      });
+    } catch (e) { /* offline */ }
+  }
+  $d("dv-btn-load-tpl").addEventListener("click", function () {
+    const k = dval("dv-templates");
+    if (!k || !TPL_CACHE[k]) { dToast("Pick a template first.", "warn"); return; }
+    $d("dv-code").value = TPL_CACHE[k];
+    $d("dv-script-name").value = k;
+    syncDGutter();
+    dToast("Template '" + k + "' loaded.", "ok");
+  });
+
+  // rendering
+  function renderDAccounts(accounts) {
+    const body = $d("dv-accounts-body");
+    if (!accounts.length) {
+      body.innerHTML = '<tr><td colspan="4" class="py-4 text-center text-slate-600">No accounts authorized yet.</td></tr>';
+    } else {
+      body.innerHTML = accounts.map(function (a) {
+        const statusDot = a.connected
+          ? '<span class="inline-flex items-center gap-1.5 text-emerald-300"><span class="dot bg-emerald-400 inline-block w-[7px] h-[7px] rounded-full"></span>ONLINE</span>'
+          : '<span class="inline-flex items-center gap-1.5 text-slate-500"><span class="inline-block w-[7px] h-[7px] rounded-full bg-slate-500"></span>IDLE</span>';
+        const script = a.running_script
+          ? '<span class="text-rose-300">' + desc(a.running_script) + "</span>"
+          : '<span class="text-slate-600">—</span>';
+        return "<tr class='border-t border-slate-800/70'>" +
+          "<td class='py-1.5 pr-2'>" + desc(a.phone) + "</td>" +
+          "<td class='py-1.5 pr-2'>" + statusDot + "</td>" +
+          "<td class='py-1.5 pr-2'>" + script + "</td>" +
+          "<td class='py-1.5 text-right'><button data-del='" + desc(a.phone) + "' class='mono text-[10px] px-2 py-1 rounded border border-rose-500/50 text-rose-300 hover:bg-rose-500/10'>DELETE</button></td>" +
+        "</tr>";
+      }).join("");
+      body.querySelectorAll("[data-del]").forEach(function (btn) {
+        btn.addEventListener("click", function () { dDeleteAccount(btn.getAttribute("data-del")); });
+      });
+    }
+    const sel = $d("dv-run-account");
+    const keep = sel.value;
+    sel.innerHTML = accounts.length ? "" : '<option value="">— no accounts —</option>';
+    accounts.forEach(function (a) {
+      const o = document.createElement("option");
+      o.value = a.phone;
+      o.textContent = a.phone + (a.username ? " (@" + a.username + ")" : "");
+      sel.appendChild(o);
+    });
+    if (keep) sel.value = keep;
+  }
+
+  function fmtUp(ms) {
+    let s = Math.floor(ms / 1000);
+    const h = Math.floor(s / 3600); s -= h * 3600;
+    const m = Math.floor(s / 60); s -= m * 60;
+    return (h ? h + "h " : "") + (m ? m + "m " : "") + s + "s";
+  }
+
+  let PROC_DATA = [];
+  function renderDProcs(processes) {
+    PROC_DATA = processes;
+    $d("dv-chip-procs").innerHTML = '<i data-lucide="cpu" class="w-3 h-3"></i>' + processes.length + (processes.length === 1 ? " PROCESS" : " PROCESSES");
+    if (window.lucide) lucide.createIcons();
+    const host = $d("dv-procs");
+    if (!processes.length) {
+      host.innerHTML = '<p class="mono text-[11px] text-slate-600 text-center py-6">No engines running. Launch a script above.</p>';
+      return;
+    }
+    host.innerHTML = processes.map(function (p) {
+      return '<div class="proc-card rounded-lg border border-slate-800 bg-slate-950/60 p-3 flex items-center gap-3">' +
+        '<span class="w-2 h-2 rounded-full bg-rose-400 shrink-0 animate-pulse"></span>' +
+        '<div class="min-w-0 flex-1">' +
+          '<div class="mono text-[11px] font-semibold text-rose-200 truncate">' + desc(p.script_name) + "</div>" +
+          '<div class="mono text-[9px] text-slate-500 truncate">' + desc(p.phone) + ' · up <span data-up="' + desc(p.started_at) + '">…</span></div>' +
+        "</div>" +
+        "<button data-stop='" + desc(p.phone) + "' class='mono text-[10px] px-2.5 py-1.5 rounded border border-rose-500/50 text-rose-300 hover:bg-rose-500/10 shrink-0'>STOP</button>" +
+      "</div>";
+    }).join("");
+    host.querySelectorAll("[data-stop]").forEach(function (btn) {
+      btn.addEventListener("click", function () { dStopScript(btn.getAttribute("data-stop")); });
+    });
+    tickUptimes();
+  }
+
+  function tickUptimes() {
+    document.querySelectorAll("[data-up]").forEach(function (el) {
+      const started = Date.parse(el.getAttribute("data-up"));
+      el.textContent = isNaN(started) ? "—" : fmtUp(Math.max(0, Date.now() - started));
+    });
+  }
+  setInterval(tickUptimes, 1000);
+
+  function tagColor(tag) {
+    const palette = ["text-rose-300", "text-cyan-300", "text-emerald-300", "text-amber-300", "text-violet-300", "text-pink-300"];
+    if (tag === "core") return "text-slate-500";
+    let h = 0;
+    for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) >>> 0;
+    return palette[h % palette.length];
+  }
+
+  function appendDLog(row) {
+    if (D.filter) {
+      const hay = (String(row.level) + " " + String(row.tag) + " " + String(row.message)).toLowerCase();
+      if (hay.indexOf(D.filter) === -1) return;
+    }
+    const host = $d("dv-term");
+    const lvl = String(row.level || "INFO").toUpperCase();
+    const lvlCls = (lvl === "ERROR" || lvl === "CRITICAL") ? "text-rose-400" : (lvl === "WARNING" ? "text-amber-400" : (lvl === "DEBUG" ? "text-slate-500" : "text-cyan-300"));
+    let time = String(row.ts || "").split("T")[1] || "";
+    time = time.replace("Z", "").split(".")[0].split("+")[0] || "--:--:--";
+    const div = document.createElement("div");
+    div.className = "logline";
+    div.innerHTML = '<span class="text-slate-600">' + desc(time) + '</span>' +
+      '<span class="' + lvlCls + ' font-semibold">' + desc((lvl + "      ").slice(0, 6)) + '</span>' +
+      '<span class="' + tagColor(String(row.tag || "core")) + ' truncate">[' + desc(String(row.tag || "core")) + "]</span>" +
+      '<span class="text-slate-300">' + desc(row.message) + "</span>";
+    host.appendChild(div);
+    while (host.children.length > 260) host.removeChild(host.firstChild);
+    const nearBottom = host.scrollHeight - host.scrollTop - host.clientHeight < 48;
+    if (nearBottom && !D.paused) host.scrollTop = host.scrollHeight;
+  }
+
+  async function pollDLogs() {
+    try {
+      const res = await dApi("/api/logs?since=" + D.since);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const j = await res.json();
+      if (!D.online) setDState(true);
+      (j.logs || []).forEach(appendDLog);
+      if (typeof j.latest === "number") D.since = j.latest;
+      setTimeout(pollDLogs, 1500);
+    } catch (e) {
+      if (D.online) setDState(false);
+      setTimeout(pollDLogs, 4000);
+    }
+  }
+
+  async function dRefreshOnce() {
+    try {
+      const res = await dApi("/api/status");
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const j = await res.json();
+      renderDAccounts(j.accounts || []);
+      renderDProcs(j.processes || []);
+      setDState(true);
+    } catch (e) { setDState(false); }
+  }
+  async function pollDStatus() {
+    await dRefreshOnce();
+    setTimeout(pollDStatus, 4000);
+  }
+
+  // editor
+  function syncDGutter() {
+    const lines = $d("dv-code").value.split("\n").length;
+    const buf = [];
+    for (let i = 1; i <= lines; i++) buf.push(i);
+    $d("dv-gutter").textContent = buf.join("\n");
+  }
+  (function initDEditor() {
+    const code = $d("dv-code");
+    code.value = DEFAULT_SCRIPT;
+    syncDGutter();
+    code.addEventListener("input", syncDGutter);
+    code.addEventListener("scroll", function () { $d("dv-gutter").scrollTop = code.scrollTop; });
+    code.addEventListener("keydown", function (e) {
+      if (e.key === "Tab") {
+        e.preventDefault();
+        const s = this.selectionStart, en = this.selectionEnd;
+        this.value = this.value.slice(0, s) + "    " + this.value.slice(en);
+        this.selectionStart = this.selectionEnd = s + 4;
+        syncDGutter();
+      }
+    });
+  })();
+
+  $d("dv-btn-pause").addEventListener("click", function () {
+    D.paused = !D.paused;
+    this.querySelector("[data-label]").textContent = D.paused ? "Resume" : "Pause";
+  });
+  $d("dv-btn-clear").addEventListener("click", function () { $d("dv-term").innerHTML = ""; });
+  $d("dv-filter").addEventListener("input", function () { D.filter = this.value.trim().toLowerCase(); });
+  $d("dv-base").value = D.base;
+  $d("dv-base-save").addEventListener("click", function () {
+    D.base = dval("dv-base").replace(/\/+$/, "");
+    localStorage.setItem("dv_base", D.base);
+    D.since = 0;
+    dToast(D.base ? ("API base set: " + D.base) : "API base cleared — same-origin mode.", "ok");
+  });
+
+  pollDLogs();
+  pollDStatus();
+  dLoadTemplates();
+
+  if (window.lucide) lucide.createIcons();
+})();
+</script>
+</body>
+</html>
