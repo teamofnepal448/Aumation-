@@ -1,6 +1,5 @@
-
 # ============================================================================
-# DEVIL MULTI-PROJECT MANAGER v5.0
+# DEVIL MULTI-PROJECT MANAGER v5.0 (FIXED)
 # Multi-account Telegram custom-script execution dashboard
 # Quart + Telethon + Hypercorn  |  single-file application (UI embedded)
 #
@@ -56,9 +55,16 @@ _stdout.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(message)s"
 logger.addHandler(_stdout)
 
 
-def emit(level, message, tag="core"):
+def emit(level, message, *args, tag="core"):
     extra = {"tag": tag}
-    getattr(logger, level.lower(), logger.info)(message, extra=extra)
+    log_fn = getattr(logger, level.lower(), logger.info)
+    if args:
+        try:
+            log_fn(message, *args, extra=extra)
+        except Exception:
+            log_fn(str(message) + " " + " ".join(str(a) for a in args), extra=extra)
+    else:
+        log_fn(message, extra=extra)
 
 
 # ----------------------------------------------------------------------------
@@ -71,7 +77,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SESSIONS_FILE = os.path.join(BASE_DIR, "sessions.json")
 TEMPLATES_FILE = os.path.join(BASE_DIR, "templates.json")
 
-PENDING = {}          # phone -> {"client","phone_code_hash","api_id","api_hash","ts"}
+PENDING = {}          # phone -> {"client","phone_code_hash","api_id","api_hash","ts","code_verified"}
 ACCOUNTS = {}         # phone -> {"client","account","session_string","connected_at"}
 RUNNING = {}          # phone -> {"task","token","name","started_at"}
 PENDING_TTL = 600.0
@@ -104,7 +110,7 @@ def read_json_file(path):
 def write_json_file(path, data):
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(data, fh)
+        json.dump(data, fh, indent=2)
     os.replace(tmp, path)
 
 
@@ -169,12 +175,14 @@ def build_script_env(phone):
     acct = ACCOUNTS[phone]
 
     def tprint(*args, **_kwargs):
-        emit("INFO", " ".join(str(a) for a in args), tag=phone)
+        msg = " ".join(str(a) for a in args)
+        emit("INFO", "%s", msg, tag=phone)
 
     def tlog(msg, level="INFO"):
-        emit(str(level).upper(), str(msg), tag=phone)
+        emit(str(level).upper(), "%s", str(msg), tag=phone)
 
     return {
+        "__builtins__": __builtins__,
         "asyncio": asyncio,
         "time": time,
         "re": re,
@@ -401,8 +409,14 @@ async def api_send_otp():
             await asyncio.wait_for(client.connect(), timeout=25)
             emit("INFO", "send-otp: MTProto connection up for %s", mask_phone(phone), tag=phone)
             sent = await client.send_code_request(phone)
-            PENDING[phone] = {"client": client, "phone_code_hash": sent.phone_code_hash,
-                              "api_id": api_id, "api_hash": api_hash, "ts": time.time()}
+            PENDING[phone] = {
+                "client": client,
+                "phone_code_hash": sent.phone_code_hash,
+                "api_id": api_id,
+                "api_hash": api_hash,
+                "ts": time.time(),
+                "code_verified": False,
+            }
         emit("INFO", "send-otp: code dispatched via %s", type(sent.type).__name__, tag=phone)
         return jsonify({"ok": True, "message": "OTP dispatched via Telegram.",
                         "code_type": type(sent.type).__name__})
@@ -431,26 +445,31 @@ async def api_verify_otp():
 
     entry = PENDING.get(phone)
     if not entry:
-        return jsonify({"ok": False, "error": "No pending login for this phone. "
-                                              "Request a new OTP first."}), 400
+        return jsonify({"ok": False, "error": "No pending login for this phone. Request a new OTP first."}), 400
     if time.time() - entry["ts"] > PENDING_TTL:
         await drop_pending(phone)
-        return jsonify({"ok": False, "error": "OTP attempt expired (10 min). "
-                                              "Request a new code."}), 410
+        return jsonify({"ok": False, "error": "OTP attempt expired (10 min). Request a new code."}), 410
 
     client = entry["client"]
     try:
         if not client.is_connected():
             await asyncio.wait_for(client.connect(), timeout=25)
-        try:
-            await client.sign_in(phone=phone, code=code,
-                                 phone_code_hash=entry["phone_code_hash"])
-        except errors.SessionPasswordNeededError:
-            emit("INFO", "verify: 2FA cloud password required", tag=phone)
+
+        if not entry.get("code_verified"):
+            try:
+                await client.sign_in(phone=phone, code=code, phone_code_hash=entry["phone_code_hash"])
+                entry["code_verified"] = True
+            except errors.SessionPasswordNeededError:
+                entry["code_verified"] = True
+                emit("INFO", "verify: 2FA cloud password required", tag=phone)
+                if not password:
+                    return jsonify({"ok": False, "need_password": True,
+                                    "message": "Two-step verification is ON — provide cloud password."})
+                await client.sign_in(password=password)
+        else:
             if not password:
                 return jsonify({"ok": False, "need_password": True,
-                                "message": "Two-step verification is ON — provide the "
-                                           "cloud password and submit again."})
+                                "message": "Two-step verification is ON — provide cloud password."})
             await client.sign_in(password=password)
 
         me = await client.get_me()
@@ -517,14 +536,12 @@ async def api_run_script():
         return jsonify({"ok": False, "error": "script_code is empty."}), 400
     acct = ACCOUNTS.get(phone)
     if not acct:
-        return jsonify({"ok": False, "error": "Account not authorized. "
-                                              "Complete OTP verification first."}), 409
+        return jsonify({"ok": False, "error": "Account not authorized. Complete OTP verification first."}), 409
 
     try:
         compile(code, "<precheck>", "exec")
     except SyntaxError as se:
-        return jsonify({"ok": False,
-                        "error": "SyntaxError line %s: %s" % (se.lineno, se.msg)}), 400
+        return jsonify({"ok": False, "error": "SyntaxError line %s: %s" % (se.lineno, se.msg)}), 400
 
     client = acct["client"]
     if not client.is_connected():
@@ -536,11 +553,9 @@ async def api_run_script():
             emit("WARNING", "Replacing running script '%s' with '%s'", old_name, name, tag=phone)
             await stop_account_task(phone, reason="replace")
         token = "%s-%s" % (int(time.time() * 1000), os.getpid())
-        task = asyncio.create_task(script_engine(phone, name, code, token),
-                                   name="engine:%s" % phone)
+        task = asyncio.create_task(script_engine(phone, name, code, token), name="engine:%s" % phone)
         task.add_done_callback(on_task_done(phone, name))
-        RUNNING[phone] = {"task": task, "token": token, "name": name,
-                          "started_at": utcnow()}
+        RUNNING[phone] = {"task": task, "token": token, "name": name, "started_at": utcnow()}
     emit("INFO", "Task registered: '%s' on %s", name, mask_phone(phone), tag=phone)
     return jsonify({"ok": True, "message": "Script launched in isolated asyncio task.",
                     "script_name": name, "phone": phone, "started_at": RUNNING[phone]["started_at"]})
@@ -576,8 +591,7 @@ async def api_save_template():
 @app.route("/api/templates", methods=["GET"])
 async def api_templates():
     store = read_json_file(TEMPLATES_FILE)
-    return jsonify({"ok": True,
-                    "templates": {k: v.get("code", "") for k, v in store.items()}})
+    return jsonify({"ok": True, "templates": {k: v.get("code", "") for k, v in store.items()}})
 
 
 # ----------------------------------------------------------------------------
@@ -627,7 +641,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>DEVIL MULTI-PROJECT MANAGER v5.0</title>
-<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
@@ -865,7 +879,6 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     return { status: res.status, data: data };
   }
 
-  // ---------- auth ----------
   async function sendOtp() {
     var apiId = parseInt(val("in-api-id"), 10);
     var payload = { api_id: apiId, api_hash: val("in-api-hash"), phone: val("in-phone") };
@@ -909,7 +922,6 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     } catch (e) { toast("Network error: " + e.message, "error"); }
   }
 
-  // ---------- script engine ----------
   async function runScript() {
     var phone = val("run-account");
     var payload = { phone_number: phone, script_code: $("code").value, script_name: val("script-name") };
@@ -960,10 +972,9 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         o.value = k; o.textContent = k;
         sel.appendChild(o);
       });
-    } catch (e) { /* offline */ }
+    } catch (e) { }
   }
 
-  // ---------- rendering ----------
   function renderAccounts(accounts) {
     var body = $("accounts-body");
     if (!accounts.length) {
@@ -1062,7 +1073,6 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     if (nearBottom && !state.paused) host.scrollTop = host.scrollHeight;
   }
 
-  // ---------- polling ----------
   var online = false;
   function setServer(on) {
     online = on;
@@ -1096,7 +1106,6 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     setTimeout(refreshStatus, 4000);
   }
 
-  // ---------- editor ----------
   function syncGutter() {
     var lines = $("code").value.split("\n").length;
     var buf = [];
