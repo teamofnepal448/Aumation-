@@ -1,33 +1,4 @@
 
-ULL SOURCE · NO TRUNCATION
-
-Every line, wired to Telegram
-Complete main.py (Quart + Telethon + Hypercorn, embedded UI, OTP + Session ID login), pinned requirements.txt, and a ready render.yaml. Copy or download straight to your repo.
-
-Copy file
-Download
-main.py
-requirements.txt
-render.yaml
-
-============================================================================
-
-TG RELAY - Production Telegram Channel Forwarder
-
-Quart + Telethon + Hypercorn  |  single-file application (UI embedded)
-
-v1.1 — adds Session ID Login (StringSession) alongside OTP auth
-
-
-
-Deploy on Render:
-
-build:  pip install -r requirements.txt
-
-start:  hypercorn main:app --bind 0.0.0.0:$PORT
-
-============================================================================
-
 import os
 import re
 import time
