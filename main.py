@@ -1,21 +1,42 @@
+# ============================================================================
+# DEVIL ENGINE v6.0
+# Telegram multi-account automation + dual-panel paid content platform
+# Quart + Telethon + Hypercorn | single-file ASGI app (UI embedded)
+#
+# Deploy on Render:
+#   build:  pip install -r requirements.txt
+#   start:  hypercorn main:app --bind 0.0.0.0:$PORT
+#
+# Environment (optional):
+#   ADMIN_USERNAME (default "admin")
+#   ADMIN_PASSWORD (default "devil@5000")
+# ============================================================================
+
 import os
 import re
+import json
 import time
+import hmac
+import secrets
+import inspect
 import asyncio
 import logging
+import traceback
+from functools import wraps
 from collections import deque
 from datetime import datetime, timezone
 
 from quart import Quart, request, jsonify, render_template_string
-from telethon import TelegramClient, events, errors
+from telethon import TelegramClient, events, errors, utils, types
 from telethon.sessions import StringSession
 
 # ----------------------------------------------------------------------------
-# Logging: ring buffer + stdout so Render captures the same stream the UI shows
+# Logging: tagged ring buffer + stdout (Render captures the same stream as UI)
 # ----------------------------------------------------------------------------
 
-LOG_BUFFER = deque(maxlen=500)
+LOG_BUFFER = deque(maxlen=600)
 LOG_SEQ = [0]
+
 
 class BufferLogHandler(logging.Handler):
     def emit(self, record):
@@ -25,13 +46,14 @@ class BufferLogHandler(logging.Handler):
                 "id": LOG_SEQ[0],
                 "ts": datetime.now(timezone.utc).isoformat(),
                 "level": record.levelname,
-                "source": record.name,
+                "tag": getattr(record, "tag", "core"),
                 "message": record.getMessage(),
             })
         except Exception:
             self.handleError(record)
 
-logger = logging.getLogger("tgrelay")
+
+logger = logging.getLogger("devil")
 logger.setLevel(logging.DEBUG)
 logger.propagate = False
 logger.addHandler(BufferLogHandler())
@@ -39,80 +61,86 @@ _stdout = logging.StreamHandler()
 _stdout.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(message)s"))
 logger.addHandler(_stdout)
 
+
+def emit(level, message, *args, **kwargs):
+    tag = kwargs.pop("tag", "core")
+    getattr(logger, level.lower(), logger.info)(message, *args, extra={"tag": tag})
+
+
 # ----------------------------------------------------------------------------
-# App + in-memory state (per Hypercorn worker)
+# App + state
 # ----------------------------------------------------------------------------
 
 app = Quart(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024   # 8 MB (QR uploads)
 
-PENDING = {} # phone -> {"client","phone_code_hash","api_id","api_hash","ts"}
-ACTIVE = {} # phone -> {"client","account","connected_at"}
-PENDING_TTL = 600.0 # seconds an OTP attempt stays valid in memory
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SESSIONS_FILE = os.path.join(BASE_DIR, "sessions.json")
+TEMPLATES_FILE = os.path.join(BASE_DIR, "templates.json")
+PREDICTIONS_FILE = os.path.join(BASE_DIR, "predictions.json")
+PAYMENTS_FILE = os.path.join(BASE_DIR, "payments.json")
+ORDERS_FILE = os.path.join(BASE_DIR, "orders.json")
+
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "devil@5000")
+ADMIN_TOKENS = {}                 # token -> expiry epoch
+ADMIN_TOKEN_TTL = 12 * 3600
+
+PENDING = {}                      # phone -> pending OTP attempt
+ACCOUNTS = {}                     # phone -> account record (the ACTIVE registry)
+RUNNING = {}                      # phone -> running script task record
+PENDING_TTL = 600.0
 STATE_LOCK = asyncio.Lock()
 
-FWD = {
-    "running": False,
-    "handler": None,
-    "builder": None,
-    "client": None,
-    "phone": None,
-    "source": None,
-    "targets": [],
-    "branding": "",
-    "forwarded": 0,
-    "failed": 0,
-    "started_at": None,
+CATEGORIES = ("session", "match", "toss", "combo")
+CATEGORY_LABELS = {
+    "session": "Session",
+    "match": "Match",
+    "toss": "Toss",
+    "combo": "All-in Combo",
 }
+
 
 def utcnow():
     return datetime.now(timezone.utc).isoformat()
 
+
 def mask_phone(phone):
     digits = re.sub(r"\D", "", str(phone))
     if len(digits) <= 4:
-        return ""
-    return "+" + digits[:3] + "***" + digits[-2:]
+        return "***"
+    return "+" + digits[:3] + "******" + digits[-2:]
 
-def parse_ident(raw):
-    """Normalize -100 ids, @usernames, t.me/ and t.me/c/ links."""
-    s = str(raw).strip()
-    if not s:
-        raise ValueError("empty identifier")
-    s = s.split("?")[0].rstrip("/")
-    m = re.match(r"^(?:https?://)?t.me/c/(\d+)(?:/\d+)?$", s)
-    if m:
-        return int("-100" + m.group(1))
-    m = re.match(r"^(?:https?://)?t.me/([\w]+)$", s)
-    if m:
-        return m.group(1)
-    if s.startswith("@"):
-        return s[1:]
-    if re.fullmatch(r"-?\d+", s):
-        return int(s)
-    return s
 
-def entity_title(entity):
-    return (getattr(entity, "title", None) or getattr(entity, "username", None) or getattr(entity, "first_name", None) or str(getattr(entity, "id", "?")))
-
-async def safe_disconnect(client):
+def read_json_file(path, fallback=None):
+    default = {} if fallback is None else fallback
     try:
-        if client and client.is_connected():
-            await client.disconnect()
-    except Exception as exc:
-        logger.debug("Disconnect notice: %s", exc)
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+            if isinstance(data, type(default)):
+                return data
+            return default
+    except FileNotFoundError:
+        return default
+    except (json.JSONDecodeError, OSError) as exc:
+        emit("WARNING", "Broken JSON store %s (%s) — starting empty", path, exc)
+        return default
 
-async def drop_pending(phone):
-    entry = PENDING.pop(phone, None)
-    if entry:
-        await safe_disconnect(entry["client"])
 
-def active_account_or_sole(phone):
-    if phone and phone in ACTIVE:
-        return phone, ACTIVE[phone]
-    if not phone and len(ACTIVE) == 1:
-        key = next(iter(ACTIVE))
-        return key, ACTIVE[key]
-    return None, None
+def write_json_file(path, data):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, ensure_ascii=False)
+    os.replace(tmp, path)
+
+
+def new_id(prefix):
+    return "%s_%s" % (prefix, secrets.token_hex(5))
+
+
+# ----------------------------------------------------------------------------
+# Telethon helpers
+# ----------------------------------------------------------------------------
 
 def rpc_error_payload(exc):
     name = type(exc).__name__
@@ -132,53 +160,245 @@ def rpc_error_payload(exc):
         return 400, "API_ID / API_HASH pair is invalid."
     return 500, "%s: %s" % (name, exc)
 
+
+async def safe_disconnect(client):
+    try:
+        if client and client.is_connected():
+            await client.disconnect()
+    except Exception as exc:
+        logger.debug("disconnect notice: %s", exc)
+
+
+async def drop_pending(phone):
+    entry = PENDING.pop(phone, None)
+    if entry:
+        await safe_disconnect(entry["client"])
+
+
+def persist_account(phone):
+    entry = ACCOUNTS[phone]
+    store = read_json_file(SESSIONS_FILE)
+    store[phone] = {
+        "session": entry["session_string"],
+        "api_id": entry["api_id"],
+        "api_hash": entry["api_hash"],
+        "saved_at": utcnow(),
+    }
+    write_json_file(SESSIONS_FILE, store)
+    emit("INFO", "sessions.json: persisted %s", mask_phone(phone), tag=phone)
+
+
+def unpersist_account(phone):
+    store = read_json_file(SESSIONS_FILE)
+    if phone in store:
+        store.pop(phone)
+        write_json_file(SESSIONS_FILE, store)
+
+
+# ----------------------------------------------------------------------------
+# Script execution engine
+# ----------------------------------------------------------------------------
+
+def build_script_env(phone):
+    acct = ACCOUNTS[phone]
+
+    def tprint(*args, **_kwargs):
+        emit("INFO", "%s", " ".join(str(a) for a in args), tag=phone)
+
+    def tlog(msg, level="INFO"):
+        emit(str(level).upper(), "%s", str(msg), tag=phone)
+
+    return {
+        "asyncio": asyncio,
+        "time": time,
+        "re": re,
+        "json": json,
+        "datetime": datetime,
+        "client": acct["client"],
+        "SESSION_STRING": acct["session_string"],
+        "PHONE": phone,
+        "events": events,
+        "errors": errors,
+        "utils": utils,
+        "types": types,
+        "TelegramClient": TelegramClient,
+        "StringSession": StringSession,
+        "print": tprint,
+        "log": tlog,
+    }
+
+
+def handlers_snapshot(client):
+    return set((id(cb), id(builder)) for cb, builder in client.list_event_handlers())
+
+
+def purge_script_handlers(client, snapshot, phone):
+    removed = 0
+    for cb, builder in client.list_event_handlers():
+        if (id(cb), id(builder)) not in snapshot:
+            try:
+                client.remove_event_handler(cb, builder)
+                removed += 1
+            except (ValueError, KeyError):
+                pass
+    if removed:
+        emit("INFO", "Purged %s script-registered handler(s)", removed, tag=phone)
+
+
+async def script_engine(phone, name, code, token):
+    acct = ACCOUNTS[phone]
+    client = acct["client"]
+    snapshot = handlers_snapshot(client)
+    emit("INFO", "Engine online: '%s' compiling…", name, tag=phone)
+    try:
+        compiled = compile(code, "<%s>" % (name or "script"), "exec")
+        env = build_script_env(phone)
+        exec(compiled, env, env)
+        emit("INFO", "'%s' module-level executed", name, tag=phone)
+
+        main_fn = env.get("main")
+        main_ran = False
+        if inspect.iscoroutinefunction(main_fn):
+            emit("INFO", "'%s': async main() detected — awaiting", name, tag=phone)
+            await main_fn()
+            main_ran = True
+            emit("INFO", "'%s': main() returned", name, tag=phone)
+
+        live = handlers_snapshot(client) - snapshot
+        if live:
+            emit("INFO", "'%s': %s handler(s) armed — task idles until stopped",
+                 name, len(live), tag=phone)
+            while True:
+                await asyncio.sleep(3600)
+        elif main_ran:
+            emit("INFO", "'%s': work complete, no handlers — exiting", name, tag=phone)
+        else:
+            emit("WARNING", "'%s' registered nothing and has no main() — exiting",
+                 name, tag=phone)
+    except asyncio.CancelledError:
+        emit("WARNING", "'%s' cancelled by operator", name, tag=phone)
+        raise
+    except SyntaxError as se:
+        emit("ERROR", "'%s' SyntaxError line %s: %s", name, se.lineno, se.msg, tag=phone)
+    except Exception:
+        trace = " | ".join(traceback.format_exc(limit=5).splitlines()[-4:])
+        emit("ERROR", "'%s' crashed: %s", name, trace, tag=phone)
+    finally:
+        purge_script_handlers(client, snapshot, phone)
+        cur = RUNNING.get(phone)
+        if cur and cur.get("token") == token:
+            RUNNING.pop(phone, None)
+        emit("INFO", "Engine halted: '%s'", name, tag=phone)
+
+
+def on_task_done(phone, name):
+    def _cb(task):
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            emit("ERROR", "Task '%s' died outside envelope: %s", name, exc, tag=phone)
+    return _cb
+
+
+async def stop_account_task(phone, reason="operator"):
+    entry = RUNNING.pop(phone, None)
+    if not entry:
+        return False
+    entry["task"].cancel()
+    try:
+        await asyncio.wait_for(entry["task"], timeout=4)
+    except (asyncio.CancelledError, asyncio.TimeoutError):
+        pass
+    except Exception as exc:
+        emit("WARNING", "Teardown raised during %s stop: %s", reason, exc, tag=phone)
+    return True
+
+
 # ----------------------------------------------------------------------------
 # Lifecycle
 # ----------------------------------------------------------------------------
+
+async def restore_sessions():
+    store = read_json_file(SESSIONS_FILE)
+    if not store:
+        emit("INFO", "No saved sessions — waiting for first authorization")
+        return
+    for phone, row in list(store.items()):
+        try:
+            client = TelegramClient(
+                StringSession(row["session"]), int(row["api_id"]), row["api_hash"],
+                device_model="Devil Engine", system_version="Hypercorn/Quart",
+                app_version="6.0.0")
+            await asyncio.wait_for(client.connect(), timeout=25)
+            if not await client.is_user_authorized():
+                raise ValueError("session dead (auth key unregistered)")
+            me = await client.get_me()
+            ACCOUNTS[phone] = {
+                "client": client,
+                "account": {"id": me.id, "username": me.username,
+                            "first_name": me.first_name, "phone": phone},
+                "session_string": row["session"],
+                "api_id": int(row["api_id"]),
+                "api_hash": row["api_hash"],
+                "connected_at": utcnow(),
+            }
+            emit("INFO", "Session restored: %s as @%s", mask_phone(phone),
+                 me.username or me.id, tag=phone)
+        except Exception as exc:
+            emit("WARNING", "Restore failed for %s: %s — dropping",
+                 mask_phone(phone), exc)
+            unpersist_account(phone)
+
 
 async def pending_sweeper():
     while True:
         await asyncio.sleep(120)
         now = time.time()
-        stale = [p for p, e in list(PENDING.items()) if now - e["ts"] > PENDING_TTL]
-        for phone in stale:
-            logger.info("Sweeper: expiring stale OTP attempt for %s", mask_phone(phone))
+        for phone in [p for p, e in list(PENDING.items())
+                      if now - e["ts"] > PENDING_TTL]:
+            emit("INFO", "Sweeper: expiring stale OTP attempt for %s", mask_phone(phone))
             await drop_pending(phone)
+        for tok in [t for t, exp in list(ADMIN_TOKENS.items()) if exp < now]:
+            ADMIN_TOKENS.pop(tok, None)
+
 
 @app.before_serving
 async def boot():
-    logger.info("Hypercorn worker online — Quart app booted, PID %s", os.getpid())
-    logger.info("Routes armed: /api/send-otp /api/verify-otp /api/login-session /api/start-forwarder /api/stop-forwarder /api/logs /api/status /api/health")
+    emit("INFO", "DEVIL ENGINE v6.0 — Hypercorn worker online, PID %s", os.getpid())
+    emit("INFO", "Panels: /  (engine + admin + customer)   Admin user: %s", ADMIN_USERNAME)
+    app.add_background_task(restore_sessions)
     app.add_background_task(pending_sweeper)
+
 
 @app.after_serving
 async def shutdown():
-    await stop_forwarder_internal()
+    for phone in list(RUNNING):
+        await stop_account_task(phone, reason="shutdown")
     for phone in list(PENDING):
         await drop_pending(phone)
-    for phone, entry in list(ACTIVE.items()):
+    for phone, entry in list(ACCOUNTS.items()):
         await safe_disconnect(entry["client"])
-    ACTIVE.clear()
-    logger.info("Shutdown complete — all Telethon clients disconnected.")
+        ACCOUNTS.pop(phone, None)
+    emit("INFO", "Shutdown complete — tasks cancelled, clients disconnected.")
 
-# ----------------------------------------------------------------------------
-# CORS (drive the API from any dashboard origin)
-# ----------------------------------------------------------------------------
 
 @app.before_request
 async def cors_preflight():
     if request.method == "OPTIONS":
         return "", 204
 
+
 @app.after_request
 async def cors_headers(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Admin-Token"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     return response
 
+
 # ----------------------------------------------------------------------------
-# API: OTP
+# API: authentication (OTP)
 # ----------------------------------------------------------------------------
 
 @app.route("/api/send-otp", methods=["POST"])
@@ -192,34 +412,35 @@ async def api_send_otp():
     phone = str(data.get("phone", "")).strip()
     if not api_hash or not phone:
         return jsonify({"ok": False, "error": "api_hash and phone are required."}), 400
-    
-    if phone in ACTIVE:
-        acct = ACTIVE[phone]["account"]
-        return jsonify({"ok": True, "already_connected": True, "account": acct, "message": "Session already authorized."})
-    
+
+    if phone in ACCOUNTS:
+        return jsonify({"ok": True, "already_connected": True,
+                        "account": ACCOUNTS[phone]["account"],
+                        "message": "Account already authorized."})
     try:
         async with STATE_LOCK:
             await drop_pending(phone)
-            client = TelegramClient(StringSession(), api_id, api_hash, device_model="TG Relay Web", system_version="Hypercorn/Quart", app_version="1.1.0")
+            client = TelegramClient(StringSession(), api_id, api_hash,
+                                    device_model="Devil Engine",
+                                    system_version="Hypercorn/Quart",
+                                    app_version="6.0.0")
             await asyncio.wait_for(client.connect(), timeout=25)
-            logger.info("send-otp: MTProto connection up for %s", mask_phone(phone))
+            emit("INFO", "send-otp: MTProto up for %s", mask_phone(phone), tag=phone)
             sent = await client.send_code_request(phone)
-            PENDING[phone] = {
-                "client": client,
-                "phone_code_hash": sent.phone_code_hash,
-                "api_id": api_id,
-                "api_hash": api_hash,
-                "ts": time.time(),
-            }
-            code_type = type(sent.type).__name__
-            logger.info("send-otp: code dispatched to %s via %s", mask_phone(phone), code_type)
-            return jsonify({"ok": True, "message": "OTP dispatched via Telegram.", "code_type": code_type})
+            PENDING[phone] = {"client": client,
+                              "phone_code_hash": sent.phone_code_hash,
+                              "api_id": api_id, "api_hash": api_hash,
+                              "ts": time.time()}
+        emit("INFO", "send-otp: code dispatched via %s",
+             type(sent.type).__name__, tag=phone)
+        return jsonify({"ok": True, "message": "OTP dispatched via Telegram.",
+                        "code_type": type(sent.type).__name__})
     except asyncio.TimeoutError:
         await drop_pending(phone)
         return jsonify({"ok": False, "error": "Timed out connecting to Telegram DC."}), 504
     except errors.RPCError as exc:
         status, msg = rpc_error_payload(exc)
-        logger.warning("send-otp failed for %s: %s", mask_phone(phone), msg)
+        emit("WARNING", "send-otp failed: %s", msg, tag=phone)
         await drop_pending(phone)
         return jsonify({"ok": False, "error": msg}), status
     except Exception as exc:
@@ -227,51 +448,57 @@ async def api_send_otp():
         await drop_pending(phone)
         return jsonify({"ok": False, "error": "Unexpected: %s" % exc}), 500
 
+
 @app.route("/api/verify-otp", methods=["POST"])
 async def api_verify_otp():
     data = await request.get_json(force=True, silent=True) or {}
     phone = str(data.get("phone", "")).strip()
     code = str(data.get("otp_code", "")).strip().replace(" ", "")
     password = str(data.get("password", "")).strip()
-    
     if not phone or not code:
         return jsonify({"ok": False, "error": "phone and otp_code are required."}), 400
-    
+
     entry = PENDING.get(phone)
     if not entry:
-        return jsonify({"ok": False, "error": "No pending login for this phone. Request a new OTP first."}), 400
-    
+        return jsonify({"ok": False, "error": "No pending login. Request a new OTP."}), 400
     if time.time() - entry["ts"] > PENDING_TTL:
         await drop_pending(phone)
-        return jsonify({"ok": False, "error": "OTP attempt expired (10 min). Request a new code."}), 410
-    
+        return jsonify({"ok": False, "error": "OTP attempt expired. Request a new code."}), 410
+
     client = entry["client"]
     try:
         if not client.is_connected():
             await asyncio.wait_for(client.connect(), timeout=25)
         try:
-            await client.sign_in(phone=phone, code=code, phone_code_hash=entry["phone_code_hash"])
+            await client.sign_in(phone=phone, code=code,
+                                 phone_code_hash=entry["phone_code_hash"])
         except errors.SessionPasswordNeededError:
-            logger.info("verify: 2FA cloud password required for %s", mask_phone(phone))
+            emit("INFO", "verify: 2FA cloud password required", tag=phone)
             if not password:
-                return jsonify({"ok": False, "need_password": True, "message": "Two-step verification is ON — provide the cloud password and submit again."})
+                return jsonify({"ok": False, "need_password": True,
+                                "message": "Two-step verification is ON — provide the "
+                                           "cloud password and submit again."})
             await client.sign_in(password=password)
-        
+
         me = await client.get_me()
-        string_session = client.session.save()
-        account = {
-            "id": me.id,
-            "username": me.username,
-            "first_name": me.first_name,
-            "phone": phone,
+        session_string = client.session.save()
+        ACCOUNTS[phone] = {
+            "client": client,
+            "account": {"id": me.id, "username": me.username,
+                        "first_name": me.first_name, "phone": phone},
+            "session_string": session_string,
+            "api_id": entry["api_id"], "api_hash": entry["api_hash"],
+            "connected_at": utcnow(),
         }
-        ACTIVE[phone] = {"client": client, "account": account, "connected_at": utcnow()}
         PENDING.pop(phone, None)
-        logger.info("verify: CONNECTED %s as @%s (id=%s)", mask_phone(phone), me.username or "-", me.id)
-        return jsonify({"ok": True, "connected": True, "account": account, "string_session": string_session, "message": "Account connected. Store the string session safely."})
+        persist_account(phone)
+        emit("INFO", "ACCOUNT SAVED: @%s (id=%s)", me.username or "-", me.id, tag=phone)
+        return jsonify({"ok": True, "connected": True,
+                        "account": ACCOUNTS[phone]["account"],
+                        "message": "Session saved. Account ready for scripting."})
     except errors.RPCError as exc:
         status, msg = rpc_error_payload(exc)
-        logger.warning("verify failed for %s: %s", mask_phone(phone), msg)
+        emit("WARNING", "verify failed: %s", msg, tag=phone)
         if status == 410:
             await drop_pending(phone)
         return jsonify({"ok": False, "error": msg}), status
@@ -279,8 +506,9 @@ async def api_verify_otp():
         logger.exception("verify unexpected failure")
         return jsonify({"ok": False, "error": "Unexpected: %s" % exc}), 500
 
+
 # ----------------------------------------------------------------------------
-# API: Session ID login (StringSession) — NEW in v1.1
+# API: Session ID login (StringSession)
 # ----------------------------------------------------------------------------
 
 @app.route("/api/login-session", methods=["POST"])
@@ -290,250 +518,16 @@ async def api_login_session():
         api_id = int(str(data.get("api_id", "")).strip())
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "api_id must be an integer."}), 400
-    
     api_hash = str(data.get("api_hash", "")).strip()
     session_string = str(data.get("session_string", "")).strip()
-    
     if not api_hash or not session_string:
-        return jsonify({"ok": False, "error": "api_hash and session_string are required."}), 400
-    
-    logger.info("session-login: verifying %s-char StringSession (blob redacted)", len(session_string))
+        return jsonify({"ok": False,
+                        "error": "api_hash and session_string are required."}), 400
+
+    # SECURITY: never log the blob itself — length only.
+    emit("INFO", "session-login: verifying %s-char StringSession (blob redacted)",
+         len(session_string))
     try:
         parsed = StringSession(session_string)
     except Exception:
-        logger.warning("session-login: rejected — blob is not a decodable StringSession")
-        return jsonify({"ok": False, "error": "Session string is malformed. Paste the exact output of StringSession.save() (starts with '1BQ…')."}), 400
-    
-    client = TelegramClient(parsed, api_id, api_hash, device_model="TG Relay Web", system_version="Hypercorn/Quart", app_version="1.1.0")
-    try:
-        await asyncio.wait_for(client.connect(), timeout=25)
-        try:
-            authorized = await client.is_user_authorized()
-        except errors.AuthKeyUnregisteredError:
-            authorized = False
-        
-        if not authorized:
-            await safe_disconnect(client)
-            logger.warning("session-login: auth key rejected by Telegram (expired/revoked)")
-            return jsonify({"ok": False, "error": "Session is invalid or expired — Telegram rejected the auth key. Generate a fresh StringSession."}), 401
-        
-        me = await client.get_me()
-        phone = "+" + me.phone if me.phone else "session-%s" % me.id
-        if phone in ACTIVE:
-            await safe_disconnect(client)
-            logger.info("session-login: %s already active as @%s", mask_phone(phone), me.username or me.id)
-            return jsonify({"ok": True, "already_connected": True, "account": ACTIVE[phone]["account"], "message": "Account already active."})
-        
-        account = {
-            "id": me.id,
-            "username": me.username,
-            "first_name": me.first_name,
-            "phone": phone,
-        }
-        ACTIVE[phone] = {"client": client, "account": account, "connected_at": utcnow()}
-        logger.info("session-login: CONNECTED %s as @%s (id=%s)", mask_phone(phone), me.username or "-", me.id)
-        
-        return jsonify({"ok": True, "connected": True, "account": account, "message": "Session verified and account connected."})
-    except asyncio.TimeoutError:
-        await safe_disconnect(client)
-        return jsonify({"ok": False, "error": "Timed out connecting to Telegram DC."}), 504
-    except errors.RPCError as exc:
-        status, msg = rpc_error_payload(exc)
-        logger.warning("session-login RPC failure: %s", msg)
-        await safe_disconnect(client)
-        return jsonify({"ok": False, "error": msg}), status
-    except Exception as exc:
-        logger.exception("session-login unexpected failure")
-        await safe_disconnect(client)
-        return jsonify({"ok": False, "error": "Unexpected: %s" % exc}), 500
-
-# ----------------------------------------------------------------------------
-# API: Forwarder
-# ----------------------------------------------------------------------------
-
-async def stop_forwarder_internal():
-    if FWD["handler"] and FWD["client"]:
-        try:
-            FWD["client"].remove_event_handler(FWD["handler"], FWD["builder"])
-        except (ValueError, KeyError):
-            pass
-    was = FWD["running"]
-    FWD.update({"running": False, "handler": None, "builder": None, "client": None, "phone": None, "source": None, "targets": [], "branding": "", "started_at": None})
-    return was
-
-@app.route("/api/start-forwarder", methods=["POST"])
-async def api_start_forwarder():
-    data = await request.get_json(force=True, silent=True) or {}
-    phone = str(data.get("phone", "")).strip()
-    branding = str(data.get("custom_branding_text", "")).strip()
-    src_raw = str(data.get("source_channel_id", "")).strip()
-    targets_raw = [t.strip() for t in str(data.get("target_channels", "")).split(",")]
-    
-    if not src_raw or not any(targets_raw):
-        return jsonify({"ok": False, "error": "source_channel_id and at least one target channel are required."}), 400
-    
-    used_phone, entry = active_account_or_sole(phone)
-    if not entry:
-        return jsonify({"ok": False, "error": "No connected account. Complete OTP verification first."}), 409
-    
-    client = entry["client"]
-    if not client.is_connected():
-        await asyncio.wait_for(client.connect(), timeout=25)
-    
-    try:
-        src_ident = parse_ident(src_raw)
-    except ValueError:
-        return jsonify({"ok": False, "error": "source_channel_id is not parseable. Use -100… id, @username or t.me link."}), 422
-    
-    ident_list = []
-    for raw in targets_raw:
-        if not raw:
-            continue
-        try:
-            ident_list.append(parse_ident(raw))
-        except ValueError:
-            return jsonify({"ok": False, "error": "Unparseable target: %s" % raw}), 422
-            
-    if not ident_list:
-        return jsonify({"ok": False, "error": "No usable target channels supplied."}), 400
-        
-    try:
-        source_entity = await client.get_entity(src_ident)
-    except Exception:
-        return jsonify({"ok": False, "error": "Source not visible to this account. Join it first (and be admin where needed)."}), 404
-        
-    resolved = []
-    for ident in ident_list:
-        try:
-            ent = await client.get_entity(ident)
-            resolved.append({"entity": ent, "title": entity_title(ent)})
-        except Exception:
-            logger.warning("start: target %s not resolvable by account", ident)
-            
-    if not resolved:
-        return jsonify({"ok": False, "error": "None of the targets resolve. The account must be a member of each target."}), 404
-        
-    src_title = entity_title(source_entity)
-    async with STATE_LOCK:
-        if await stop_forwarder_internal():
-            logger.info("start: detached previous forwarder binding (restart).")
-        builder = events.NewMessage(chats=source_entity)
-        
-        async def relay(event):
-            msg = event.message
-            if getattr(msg, "action", None):
-                return
-            body = (msg.message or "").strip()
-            branded = (body + "\n\n" + branding).strip() if branding else body
-            for target in FWD["targets"]:
-                ent = target["entity"]
-                try:
-                    if msg.media is not None:
-                        await client.send_file(ent, msg.media, caption=(branded or None))
-                    else:
-                        if not branded:
-                            continue
-                        await client.send_message(ent, branded, link_preview=False)
-                    FWD["forwarded"] += 1
-                    logger.info("relay: msg %s → %s", msg.id, target["title"])
-                except errors.FloodWaitError as fw:
-                    logger.warning("relay: FloodWait %ss on %s", fw.seconds, target["title"])
-                except Exception as exc:
-                    FWD["failed"] += 1
-                    logger.error("relay: send to %s failed: %s", target["title"], exc)
-                    
-        client.add_event_handler(relay, builder)
-        FWD.update({
-            "running": True,
-            "handler": relay,
-            "builder": builder,
-            "client": client,
-            "phone": used_phone,
-            "source": {"title": src_title, "id": getattr(source_entity, "id", None)},
-            "targets": resolved,
-            "branding": branding,
-            "forwarded": 0,
-            "failed": 0,
-            "started_at": utcnow(),
-        })
-        logger.info("start: FORWARDER LIVE %s → %s", src_title, ", ".join(t["title"] for t in resolved))
-        return jsonify({
-            "ok": True,
-            "message": "Forwarder bound. Listening for new messages.",
-            "source": {"title": src_title, "id": getattr(source_entity, "id", None)},
-            "targets": [{"title": t["title"]} for t in resolved],
-            "branding": branding,
-        })
-
-@app.route("/api/stop-forwarder", methods=["POST"])
-async def api_stop_forwarder():
-    async with STATE_LOCK:
-        was = await stop_forwarder_internal()
-        if was:
-            logger.info("stop: forwarder stopped (forwarded=%s failed=%s)", FWD["forwarded"], FWD["failed"])
-            return jsonify({"ok": True, "message": "Forwarder stopped. Handler detached."})
-        return jsonify({"ok": False, "error": "Forwarder is not running."}), 409
-
-# ----------------------------------------------------------------------------
-# API: logs / status / health
-# ----------------------------------------------------------------------------
-
-@app.route("/api/logs", methods=["GET"])
-async def api_logs():
-    try:
-        since = int(request.args.get("since", "0"))
-    except ValueError:
-        since = 0
-    fresh = [row for row in LOG_BUFFER if row["id"] > since]
-    return jsonify({"ok": True, "logs": fresh, "latest": LOG_SEQ[0]})
-
-@app.route("/api/status", methods=["GET"])
-async def api_status():
-    accounts = []
-    for phone, entry in ACTIVE.items():
-        a = dict(entry["account"])
-        a["phone"] = mask_phone(a.get("phone", phone))
-        a["connected_at"] = entry["connected_at"]
-        accounts.append(a)
-    return jsonify({
-        "ok": True,
-        "server_time": utcnow(),
-        "accounts": accounts,
-        "pending_logins": len(PENDING),
-        "forwarder": {
-            "running": FWD["running"],
-            "phone": mask_phone(FWD["phone"]) if FWD["phone"] else None,
-            "source": FWD["source"],
-            "targets": [t["title"] for t in FWD["targets"]],
-            "branding": FWD["branding"],
-            "forwarded": FWD["forwarded"],
-            "failed": FWD["failed"],
-            "started_at": FWD["started_at"],
-        },
-    })
-
-@app.route("/api/health", methods=["GET"])
-async def api_health():
-    return jsonify({"ok": True, "ts": utcnow()})
-
-# ----------------------------------------------------------------------------
-# Embedded dashboard
-# ----------------------------------------------------------------------------
-
-DASHBOARD_HTML = r""" TG RELAY — Control Deck
-** TGRELAY QUART + TELETHON LIVE DECK OFFLINE NO ACCOUNT 
-<section class="glass rounded-2xl p-5"> <h2 class="font-bold flex items-center gap-2 mb-4"><i data-lucide="key-round" class="w-4 h-4 text-cyan-400"></i>Account Session</h2> <div class="grid grid-cols-2 gap-3"> <div><label class="flab" for="in-api-id">API_ID</label><input id="in-api-id" class="field" placeholder="204xxxxx" inputmode="numeric"></div> <div><label class="flab" for="in-api-hash">API_HASH</label><input id="in-api-hash" type="password" class="field" placeholder="0123abc…"></div> </div> <div class="mt-3"><label class="flab" for="in-phone">PHONE_NUMBER</label><input id="in-phone" class="field" placeholder="+1 555 000 1122"></div> <button id="btn-otp" class="btn mt-4 w-full py-2.5 rounded-xl bg-cyan-500 text-slate-950 font-bold text-sm hover:bg-cyan-400 flex items-center justify-center gap-2 disabled:opacity-60"> <i data-lucide="send" class="w-4 h-4"></i><span data-label>Request OTP</span> </button> <div id="otp-block" class="hidden mt-5 pt-4 border-t border-dashed border-slate-700/70"> <div class="mono text-[9px] tracking-[.2em] text-emerald-300 mb-3 flex items-center gap-2"><span class="dot"></span>OTP BLOCK — CHECK TELEGRAM</div> <div class="grid grid-cols-2 gap-3"> <div><label class="flab" for="in-otp">OTP_CODE</label><input id="in-otp" class="field" placeholder="12345" autocomplete="one-time-code"></div> <div><label class="flab" for="in-2fa">2FA (OPTIONAL)</label><input id="in-2fa" type="password" class="field" placeholder="cloud password"></div> </div> <button id="btn-verify" class="btn mt-4 w-full py-2.5 rounded-xl bg-emerald-500 text-slate-950 font-bold text-sm hover:bg-emerald-400 flex items-center justify-center gap-2 disabled:opacity-60"> <i data-lucide="shield-check" class="w-4 h-4"></i><span data-label>Verify &amp; Connect</span> </button> <div id="session-wrap" class="hidden mt-3"> <label class="flab" for="out-session">STRING SESSION — SECRET</label> <div class="relative"> <textarea id="out-session" readonly class="field h-20 !text-[10px] resize-none pr-8"></textarea> <button id="btn-copy-session" class="absolute top-2 right-2 text-slate-500 hover:text-cyan-300"><i data-lucide="copy" class="w-4 h-4"></i></button> </div> </div> </div> </section> <section class="glass rounded-2xl p-5"> <h2 class="font-bold flex items-center gap-2 mb-4"><i data-lucide="fingerprint" class="w-4 h-4 text-cyan-400"></i>Session ID Login</h2> <div class="grid grid-cols-2 gap-3"> <div><label class="flab" for="s-api-id">API_ID</label><input id="s-api-id" class="field" placeholder="204xxxxx" inputmode="numeric"></div> <div><label class="flab" for="s-api-hash">API_HASH</label><input id="s-api-hash" type="password" class="field" placeholder="0123abc…"></div> </div> <div class="mt-3"> <label class="flab" for="s-session">TELEGRAM STRING SESSION</label> <textarea id="s-session" class="field h-16 !text-[10px] resize-none leading-relaxed" placeholder="1BQAAAA… paste StringSession.save() output"></textarea> </div> <button id="btn-session" class="btn mt-4 w-full py-2.5 rounded-xl bg-emerald-500 text-slate-950 font-bold text-sm hover:bg-emerald-400 flex items-center justify-center gap-2 disabled:opacity-60"> <i data-lucide="log-in" class="w-4 h-4"></i><span data-label>Login With Session</span> </button> <p class="mono text-[9px] text-slate-600 mt-2">Verified via is_user_authorized() + get_me(). Blob never logged, never returned by the API.</p> </section> <section class="glass rounded-2xl p-5"> <div class="flex items-center justify-between mb-4"> <h2 class="font-bold flex items-center gap-2"><i data-lucide="repeat-2" class="w-4 h-4 text-emerald-400"></i>Channel Forwarder</h2> <span id="chip-relay" class="chip chip-off"><span class="dot"></span>IDLE</span> </div> <div><label class="flab" for="in-source">SOURCE_CHANNEL_ID</label><input id="in-source" class="field" placeholder="-100… / @user / t.me/c/…"></div> <div class="mt-3"><label class="flab" for="in-targets">TARGET_CHANNELS</label><input id="in-targets" class="field" placeholder="-100…, @mirror1, t.me/c/…"></div> <div class="mt-3"><label class="flab" for="in-branding">CUSTOM_BRANDING_TEXT</label><input id="in-branding" class="field" placeholder="via @YourBrand"></div> <div class="mt-4 grid grid-cols-2 gap-3"> <button id="btn-start" class="btn py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-500 text-slate-950 font-bold text-sm hover:opacity-95 flex items-center justify-center gap-2 disabled:opacity-60"> <i data-lucide="play" class="w-4 h-4"></i><span data-label>Start Forwarder</span> </button> <button id="btn-stop" class="btn hidden py-2.5 rounded-xl border border-rose-500/50 text-rose-300 font-bold text-sm hover:bg-rose-500/10 flex items-center justify-center gap-2 disabled:opacity-60"> <i data-lucide="square" class="w-4 h-4"></i><span data-label>Stop</span> </button> </div> <p id="meta-relay" class="mono text-[9px] text-slate-600 mt-3 truncate">no binding yet</p> <p class="mono text-[9px] text-slate-600 mt-1"><span id="relay-count">0</span> relayed</p> </section> 
-relay://live-logs Pause Clear 
---:--:--SYSTEM Console attached. Streaming GET /api/logs…
-""" 
-
-@app.route("/", methods=["GET"])
-async def dashboard():
-    return await render_template_string(DASHBOARD_HTML)
-
-# ----------------------------------------------------------------------------
-# Entrypoint (local dev). On Render: hypercorn main:app --bind 0.0.0.0:$PORT
-# ----------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+        emit("WARNING", "session-login: blob is not a de
