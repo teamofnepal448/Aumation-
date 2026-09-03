@@ -1,0 +1,1837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TG RELAY — Production Quart + Telethon Forwarder</title>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --cyan:#06b6d4; --emerald:#10b981; }
+  html { scroll-behavior:smooth; }
+  body { font-family:'Space Grotesk',ui-sans-serif,system-ui,sans-serif; background:#04060c; color:#e2e8f0; overflow-x:hidden; }
+  .mono { font-family:'JetBrains Mono',ui-monospace,monospace; }
+  ::selection { background:rgba(6,182,212,.35); color:#fff; }
+  ::-webkit-scrollbar { width:9px; height:9px; }
+  ::-webkit-scrollbar-track { background:#0a0f1a; }
+  ::-webkit-scrollbar-thumb { background:linear-gradient(180deg,#164e63,#134e4a); border-radius:8px; border:2px solid #0a0f1a; }
+  ::-webkit-scrollbar-thumb:hover { background:#0e7490; }
+
+  .bg-grid { background-image:linear-gradient(rgba(148,163,184,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,184,.05) 1px,transparent 1px); background-size:44px 44px; mask-image:radial-gradient(ellipse 90% 70% at 50% 0%,#000 40%,transparent 100%); }
+  .noise { background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E"); }
+  .orb { position:absolute; border-radius:9999px; filter:blur(90px); opacity:.22; animation:drift 16s ease-in-out infinite alternate; }
+  @keyframes drift { from { transform:translate3d(0,0,0) scale(1); } to { transform:translate3d(50px,-40px,0) scale(1.14); } }
+
+  .glass { background:linear-gradient(160deg,rgba(15,23,42,.82),rgba(2,6,23,.9)); border:1px solid rgba(148,163,184,.1); backdrop-filter:blur(14px); }
+  .glass:hover { border-color:rgba(6,182,212,.22); }
+  .card { transition:transform .35s cubic-bezier(.22,1,.36,1), border-color .3s, box-shadow .3s; }
+  .card:hover { transform:translateY(-2px); box-shadow:0 18px 60px -22px rgba(6,182,212,.28); }
+
+  .kicker { letter-spacing:.28em; }
+  .grad-text { background:linear-gradient(100deg,#67e8f9 0%,#06b6d4 40%,#10b981 100%); -webkit-background-clip:text; background-clip:text; color:transparent; }
+
+  .btn { position:relative; overflow:hidden; transition:all .25s ease; }
+  .btn::after { content:""; position:absolute; inset:0; background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.18) 50%,transparent 70%); transform:translateX(-120%); transition:transform .55s ease; }
+  .btn:hover::after { transform:translateX(120%); }
+  .btn:active { transform:scale(.97); }
+
+  .chip { display:inline-flex; align-items:center; gap:.4rem; font-family:'JetBrains Mono',monospace; font-size:.62rem; letter-spacing:.12em; padding:.3rem .65rem; border-radius:9999px; border:1px solid rgba(148,163,184,.18); color:#94a3b8; background:rgba(15,23,42,.6); white-space:nowrap; }
+  .chip-on { border-color:rgba(16,185,129,.45); color:#34d399; background:rgba(16,185,129,.08); }
+  .chip-live { border-color:rgba(6,182,212,.5); color:#22d3ee; background:rgba(6,182,212,.1); animation:pulseGlow 2s ease-in-out infinite; }
+  .chip-err { border-color:rgba(244,63,94,.45); color:#fb7185; background:rgba(244,63,94,.08); }
+  .chip-off { border-color:rgba(148,163,184,.2); color:#64748b; }
+  @keyframes pulseGlow { 0%,100% { box-shadow:0 0 0 0 rgba(6,182,212,.35); } 50% { box-shadow:0 0 18px 2px rgba(6,182,212,.25); } }
+  .dot { width:6px; height:6px; border-radius:9999px; background:currentColor; }
+  .dot-blink { animation:blink 1.4s ease-in-out infinite; }
+  @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:.25; } }
+
+  .field { width:100%; background:rgba(2,6,23,.75); border:1px solid rgba(148,163,184,.14); border-radius:.65rem; padding:.62rem .85rem; font-family:'JetBrains Mono',monospace; font-size:.8rem; color:#e2e8f0; outline:none; transition:border-color .25s, box-shadow .25s; }
+  .field:focus { border-color:rgba(6,182,212,.6); box-shadow:0 0 0 3px rgba(6,182,212,.12); }
+  .field::placeholder { color:#475569; }
+  label.flab { font-family:'JetBrains Mono',monospace; font-size:.62rem; letter-spacing:.16em; color:#7d8ca3; display:block; margin-bottom:.35rem; }
+
+  .console-wrap { background:#02040a; border:1px solid rgba(148,163,184,.12); border-radius:.9rem; position:relative; overflow:hidden; }
+  .console-wrap::before { content:""; position:absolute; inset:0; pointer-events:none; background:repeating-linear-gradient(0deg,rgba(255,255,255,.016) 0 1px,transparent 1px 3px); z-index:5; }
+  .logline { display:grid; grid-template-columns:74px 66px 1fr; gap:.6rem; padding:.12rem 0; font-family:'JetBrains Mono',monospace; font-size:.72rem; line-height:1.5; word-break:break-word; }
+  .logline:hover { background:rgba(6,182,212,.05); }
+
+  .code-scroll { scrollbar-width:thin; }
+  .cl { display:block; counter-increment:ln; padding-left:3.4rem; position:relative; min-height:1.5em; white-space:pre; }
+  .cl::before { content:counter(ln); position:absolute; left:0; width:2.5rem; text-align:right; color:#334155; user-select:none; }
+  .cl:hover { background:rgba(6,182,212,.05); }
+  .code-body { counter-reset:ln; }
+  .tok-kw { color:#22d3ee; } .tok-str { color:#34d399; } .tok-com { color:#475569; font-style:italic; }
+  .tok-dec { color:#c084fc; } .tok-num { color:#fbbf24; }
+
+  .tab { transition:all .2s ease; }
+  .tab:hover { color:#e2e8f0; }
+
+  .flowpath { stroke-dasharray:5 7; animation:dashmove 1.1s linear infinite; }
+  @keyframes dashmove { to { stroke-dashoffset:-12; } }
+
+  .toast-fx { animation:toastIn .35s cubic-bezier(.22,1,.36,1); }
+  @keyframes toastIn { from { transform:translateY(10px); opacity:0; } to { transform:none; opacity:1; } }
+
+  #cursor-glow { position:fixed; width:520px; height:520px; border-radius:9999px; pointer-events:none; z-index:1; background:radial-gradient(circle,rgba(6,182,212,.07),transparent 62%); transform:translate(-50%,-50%); }
+  .reveal { opacity:0; transform:translateY(26px); transition:opacity .8s ease, transform .8s cubic-bezier(.22,1,.36,1); }
+  .reveal.vis { opacity:1; transform:none; }
+</style>
+</head>
+<body class="antialiased">
+
+<!-- ambient background layers -->
+<div class="fixed inset-0 z-0 pointer-events-none">
+  <div class="absolute inset-0 bg-grid"></div>
+  <div class="orb w-[560px] h-[560px] bg-cyan-500 -top-40 -left-40"></div>
+  <div class="orb w-[480px] h-[480px] bg-emerald-500 top-1/3 -right-52" style="animation-delay:-6s"></div>
+  <div class="orb w-[420px] h-[420px] bg-teal-500 bottom-0 left-1/4" style="animation-delay:-11s"></div>
+  <div class="absolute inset-0 noise"></div>
+</div>
+<div id="cursor-glow"></div>
+
+<!-- ============ NAV ============ -->
+<nav class="relative z-20 sticky top-0 border-b border-slate-800/60 bg-[#04060c]/80 backdrop-blur-xl">
+  <div class="max-w-7xl mx-auto px-5 md:px-8 h-16 flex items-center justify-between gap-4">
+    <a href="#top" class="flex items-center gap-3 group">
+      <span class="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500 to-emerald-500 flex items-center justify-center shadow-lg shadow-cyan-500/25 group-hover:shadow-cyan-400/40 transition-shadow">
+        <i data-lucide="zap" class="w-5 h-5 text-slate-950"></i>
+      </span>
+      <span class="font-bold tracking-tight text-lg">TG<span class="text-cyan-400">RELAY</span> <span class="mono text-[10px] text-slate-500 tracking-[.2em] ml-1 hidden sm:inline">QUART·TELETHON·HYPERCORN</span></span>
+    </a>
+    <div class="hidden md:flex items-center gap-6 mono text-[11px] tracking-[.18em] text-slate-400">
+      <a href="#deck" class="hover:text-cyan-300 transition-colors">LIVE DECK</a>
+      <a href="#source" class="hover:text-cyan-300 transition-colors">SOURCE</a>
+      <a href="#deploy" class="hover:text-cyan-300 transition-colors">DEPLOY</a>
+    </div>
+    <div class="flex items-center gap-2">
+      <button id="nav-copy-req" class="btn mono text-[11px] tracking-wider px-3.5 py-2 rounded-lg border border-slate-700 text-slate-300 hover:border-slate-500 flex items-center gap-2">
+        <i data-lucide="copy" class="w-3.5 h-3.5"></i><span class="hidden sm:inline">requirements.txt</span>
+      </button>
+      <button id="nav-copy-py" class="btn mono text-[11px] tracking-wider px-3.5 py-2 rounded-lg bg-cyan-500 text-slate-950 font-bold hover:bg-cyan-400 flex items-center gap-2 shadow-lg shadow-cyan-500/25">
+        <i data-lucide="clipboard-copy" class="w-3.5 h-3.5"></i><span class="hidden sm:inline">COPY main.py</span><span class="sm:hidden">main.py</span>
+      </button>
+    </div>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<header id="top" class="relative z-10 max-w-7xl mx-auto px-5 md:px-8 pt-16 md:pt-24 pb-14 md:pb-20">
+  <div class="grid lg:grid-cols-12 gap-10 items-center">
+    <div class="lg:col-span-7 reveal">
+      <div class="flex flex-wrap items-center gap-2 mb-6">
+        <span class="chip chip-on"><span class="dot dot-blink"></span>PRODUCTION BUILD v1.1</span>
+        <span class="chip"><i data-lucide="fingerprint" class="w-3 h-3"></i>SESSION ID LOGIN</span>
+        <span class="chip"><i data-lucide="file-code-2" class="w-3 h-3"></i>SINGLE-FILE APP</span>
+      </div>
+      <h1 class="text-4xl md:text-6xl font-bold leading-[1.04] tracking-tight">
+        Telegram channel forwarder.<br>
+        <span class="grad-text">Real Telethon wire calls.</span><br>
+        Zero dummy data.
+      </h1>
+      <p class="mt-6 text-slate-400 max-w-xl text-base md:text-lg leading-relaxed">
+        A 100% production-ready monolith: <span class="text-slate-200 font-semibold">Quart</span> serves an embedded Tailwind control deck, <span class="text-slate-200 font-semibold">Telethon</span> drives OTP <span class="text-slate-200 font-semibold">and StringSession</span> sign-in plus a live <span class="mono text-cyan-300 text-sm">events.NewMessage</span> relay, and <span class="text-slate-200 font-semibold">Hypercorn</span> ships it to Render in one command.
+      </p>
+      <div class="mt-8 flex flex-col sm:flex-row gap-3">
+        <div class="glass rounded-xl px-4 py-3 flex items-center gap-3 mono text-[13px] flex-1 min-w-0">
+          <span class="text-emerald-400 select-none">$</span>
+          <span class="truncate text-slate-200">hypercorn main:app --bind 0.0.0.0:$PORT</span>
+          <button id="hero-copy-cmd" class="ml-auto text-slate-500 hover:text-cyan-300 transition-colors shrink-0" title="Copy start command"><i data-lucide="copy" class="w-4 h-4"></i></button>
+        </div>
+        <a href="#deck" class="btn px-6 py-3 rounded-xl bg-emerald-500 text-slate-950 font-bold text-sm flex items-center justify-center gap-2 hover:bg-emerald-400 shadow-lg shadow-emerald-500/25">
+          OPEN LIVE DECK <i data-lucide="arrow-down" class="w-4 h-4"></i>
+        </a>
+      </div>
+      <div class="mt-8 grid grid-cols-3 max-w-md gap-3">
+        <div><div class="mono text-2xl font-bold text-cyan-400">8</div><div class="mono text-[10px] tracking-[.18em] text-slate-500 mt-1">REST ENDPOINTS</div></div>
+        <div><div class="mono text-2xl font-bold text-emerald-400">2</div><div class="mono text-[10px] tracking-[.18em] text-slate-500 mt-1">AUTH METHODS</div></div>
+        <div><div class="mono text-2xl font-bold text-slate-200">∞</div><div class="mono text-[10px] tracking-[.18em] text-slate-500 mt-1">TARGET CHANNELS</div></div>
+      </div>
+    </div>
+
+    <!-- relay diagram -->
+    <div class="lg:col-span-5 reveal">
+      <div class="glass card rounded-2xl p-6 relative overflow-hidden">
+        <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent"></div>
+        <div class="flex items-center justify-between mb-4">
+          <span class="mono text-[10px] tracking-[.24em] text-slate-500">LIVE WIRE PATH</span>
+          <span class="chip chip-live"><span class="dot dot-blink"></span>MTProto</span>
+        </div>
+        <svg viewBox="0 0 420 250" class="w-full h-auto" fill="none">
+          <defs>
+            <linearGradient id="lg1" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#06b6d4"/><stop offset="1" stop-color="#10b981"/></linearGradient>
+          </defs>
+          <path d="M 88 86 C 150 60, 190 96, 236 120" stroke="url(#lg1)" stroke-width="1.6" class="flowpath"/>
+          <path d="M 236 132 C 190 156, 150 190, 88 168" stroke="url(#lg1)" stroke-width="1.6" class="flowpath" style="animation-delay:-.35s"/>
+          <path d="M 262 118 C 310 96, 330 92, 356 88" stroke="#10b981" stroke-width="1.6" class="flowpath" style="animation-delay:-.6s"/>
+          <path d="M 262 126 L 360 126" stroke="#10b981" stroke-width="1.6" class="flowpath" style="animation-delay:-.8s"/>
+          <path d="M 262 134 C 310 158, 330 162, 356 166" stroke="#10b981" stroke-width="1.6" class="flowpath" style="animation-delay:-1s"/>
+          <circle r="3.4" fill="#22d3ee"><animateMotion dur="2.2s" repeatCount="indefinite" path="M 88 86 C 150 60, 190 96, 236 120"/></circle>
+          <circle r="3.4" fill="#34d399"><animateMotion dur="2.2s" begin="0.5s" repeatCount="indefinite" path="M 262 126 L 360 126"/></circle>
+          <circle r="3" fill="#34d399"><animateMotion dur="2.6s" begin="0.8s" repeatCount="indefinite" path="M 262 118 C 310 96, 330 92, 356 88"/></circle>
+          <circle r="3" fill="#34d399"><animateMotion dur="2.4s" begin="1.1s" repeatCount="indefinite" path="M 262 134 C 310 158, 330 162, 356 166"/></circle>
+          <rect x="12" y="66" width="76" height="76" rx="14" fill="rgba(6,182,212,.08)" stroke="rgba(6,182,212,.45)"/>
+          <text x="50" y="96" text-anchor="middle" fill="#67e8f9" font-size="10" font-family="JetBrains Mono" letter-spacing="1">SOURCE</text>
+          <text x="50" y="112" text-anchor="middle" fill="#475569" font-size="8" font-family="JetBrains Mono">-100…</text>
+          <rect x="222" y="90" width="62" height="62" rx="14" fill="rgba(16,185,129,.1)" stroke="rgba(16,185,129,.55)"/>
+          <text x="253" y="116" text-anchor="middle" fill="#34d399" font-size="10" font-family="JetBrains Mono" letter-spacing="1">RELAY</text>
+          <text x="253" y="131" text-anchor="middle" fill="#475569" font-size="8" font-family="JetBrains Mono">rebrand</text>
+          <rect x="356" y="72" width="52" height="32" rx="9" fill="rgba(16,185,129,.07)" stroke="rgba(16,185,129,.35)"/>
+          <rect x="360" y="112" width="52" height="32" rx="9" fill="rgba(16,185,129,.07)" stroke="rgba(16,185,129,.35)"/>
+          <rect x="356" y="152" width="52" height="32" rx="9" fill="rgba(16,185,129,.07)" stroke="rgba(16,185,129,.35)"/>
+          <text x="386" y="126" text-anchor="middle" fill="#6ee7b7" font-size="8.5" font-family="JetBrains Mono">×N</text>
+          <text x="20" y="228" fill="#334155" font-size="9" font-family="JetBrains Mono">events.NewMessage → send_file / send_message → targets[]</text>
+        </svg>
+        <div class="mt-3 grid grid-cols-3 gap-2 mono text-[10px]">
+          <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-2.5"><span class="text-cyan-300 block">/api/login-session</span><span class="text-slate-500">StringSession auth</span></div>
+          <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-2.5"><span class="text-cyan-300 block">/api/verify-otp</span><span class="text-slate-500">sign_in()</span></div>
+          <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-2.5"><span class="text-cyan-300 block">/api/start-fwd</span><span class="text-slate-500">NewMessage evt</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ============ LIVE DECK ============ -->
+<section id="deck" class="relative z-10 max-w-7xl mx-auto px-5 md:px-8 py-14">
+  <div class="reveal">
+    <div class="flex items-end justify-between flex-wrap gap-4 mb-8">
+      <div>
+        <p class="kicker mono text-[11px] text-cyan-400 mb-2">01 — CONTROL DECK</p>
+        <h2 class="text-3xl md:text-4xl font-bold tracking-tight">The exact dashboard embedded in <span class="mono text-cyan-300">main.py</span></h2>
+        <p class="text-slate-500 mt-2 max-w-2xl text-sm md:text-base">Every button hits a real Quart route. Serve the file with Hypercorn and this UI goes live instantly — or point the API base at your Render URL to drive it remotely (CORS is enabled server-side).</p>
+      </div>
+      <div class="flex items-center gap-2 glass rounded-xl px-3 py-2">
+        <span class="mono text-[10px] tracking-widest text-slate-500">API&nbsp;BASE</span>
+        <input id="tgr-base" class="field !py-1.5 !px-2.5 !text-[11px] !w-48 sm:!w-64" placeholder="same origin (blank)">
+        <button id="tgr-base-save" class="btn mono text-[10px] px-3 py-1.5 rounded-md bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/25">SET</button>
+      </div>
+    </div>
+
+    <div class="grid lg:grid-cols-12 gap-6">
+      <!-- left column: auth + session login + forwarder -->
+      <div class="lg:col-span-5 space-y-6">
+        <!-- AUTH CARD -->
+        <div class="glass card rounded-2xl p-6 relative" >
+          <div class="flex items-center justify-between mb-5">
+            <h3 class="font-bold text-lg flex items-center gap-2"><i data-lucide="key-round" class="w-5 h-5 text-cyan-400"></i>Account Session</h3>
+            <span id="tgr-chip-account" class="chip chip-off"><span class="dot"></span>NOT CONNECTED</span>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="flab" for="tgr-api-id">API_ID</label>
+              <input id="tgr-api-id" class="field" placeholder="204xxxxxx" inputmode="numeric">
+            </div>
+            <div>
+              <label class="flab" for="tgr-api-hash">API_HASH</label>
+              <input id="tgr-api-hash" class="field" type="password" placeholder="0123abcd…">
+            </div>
+          </div>
+          <div class="mt-3">
+            <label class="flab" for="tgr-phone">PHONE_NUMBER (intl format)</label>
+            <input id="tgr-phone" class="field" placeholder="+1555 000 1122">
+          </div>
+          <button id="tgr-btn-otp" class="btn mt-4 w-full py-3 rounded-xl bg-cyan-500 text-slate-950 font-bold text-sm hover:bg-cyan-400 shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 disabled:opacity-60">
+            <i data-lucide="send" class="w-4 h-4"></i><span data-label>Request OTP</span>
+          </button>
+
+          <!-- hidden OTP block -->
+          <div id="tgr-otp-block" class="hidden mt-5 pt-5 border-t border-dashed border-slate-700/70">
+            <div class="flex items-center gap-2 mb-4 mono text-[10px] tracking-[.2em] text-emerald-300"><span class="dot dot-blink"></span>OTP BLOCK — CODE DISPATCHED VIA TELEGRAM</div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="flab" for="tgr-otp">OTP_CODE</label>
+                <input id="tgr-otp" class="field" placeholder="12345" inputmode="numeric" autocomplete="one-time-code">
+              </div>
+              <div>
+                <label class="flab" for="tgr-2fa">2FA PASSWORD (OPTIONAL)</label>
+                <input id="tgr-2fa" class="field" type="password" placeholder="cloud password">
+              </div>
+            </div>
+            <button id="tgr-btn-verify" class="btn mt-4 w-full py-3 rounded-xl bg-emerald-500 text-slate-950 font-bold text-sm hover:bg-emerald-400 shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 disabled:opacity-60">
+              <i data-lucide="shield-check" class="w-4 h-4"></i><span data-label>Verify &amp; Connect</span>
+            </button>
+            <div id="tgr-session-wrap" class="hidden mt-4">
+              <label class="flab" for="tgr-out-session">STRING SESSION — KEEP SECRET</label>
+              <div class="relative">
+                <textarea id="tgr-out-session" class="field !text-[10px] leading-relaxed h-20 resize-none pr-10" readonly></textarea>
+                <button id="tgr-btn-copy-session" class="absolute top-2 right-2 text-slate-500 hover:text-cyan-300 transition-colors" title="Copy session"><i data-lucide="copy" class="w-4 h-4"></i></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SESSION ID LOGIN CARD -->
+        <div class="glass card rounded-2xl p-6">
+          <h3 class="font-bold text-lg flex items-center gap-2 mb-4"><i data-lucide="fingerprint" class="w-5 h-5 text-cyan-400"></i>Session ID Login</h3>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="flab" for="tgr-s-api-id">API_ID</label>
+              <input id="tgr-s-api-id" class="field" placeholder="204xxxxxx" inputmode="numeric">
+            </div>
+            <div>
+              <label class="flab" for="tgr-s-api-hash">API_HASH</label>
+              <input id="tgr-s-api-hash" class="field" type="password" placeholder="0123abcd…">
+            </div>
+          </div>
+          <div class="mt-3">
+            <label class="flab" for="tgr-s-session">TELEGRAM STRING SESSION</label>
+            <textarea id="tgr-s-session" class="field !text-[10px] leading-relaxed h-16 resize-none" placeholder="1BQAAAA… paste StringSession.save() output"></textarea>
+          </div>
+          <button id="tgr-btn-session" class="btn mt-4 w-full py-3 rounded-xl bg-emerald-500 text-slate-950 font-bold text-sm hover:bg-emerald-400 shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 disabled:opacity-60">
+            <i data-lucide="log-in" class="w-4 h-4"></i><span data-label>Login With Session</span>
+          </button>
+          <p class="mono text-[9px] text-slate-600 mt-2">Verified via is_user_authorized() + get_me(). Session blob never logged, never returned by the API.</p>
+        </div>
+
+        <!-- FORWARDER CARD -->
+        <div class="glass card rounded-2xl p-6">
+          <div class="flex items-center justify-between mb-5">
+            <h3 class="font-bold text-lg flex items-center gap-2"><i data-lucide="repeat-2" class="w-5 h-5 text-emerald-400"></i>Channel Forwarder</h3>
+            <span id="tgr-chip-relay" class="chip chip-off"><span class="dot"></span>RELAY IDLE</span>
+          </div>
+          <div>
+            <label class="flab" for="tgr-source">SOURCE_CHANNEL_ID — id / @user / t.me/c/…</label>
+            <input id="tgr-source" class="field" placeholder="-1001234567890 or @news">
+          </div>
+          <div class="mt-3">
+            <label class="flab" for="tgr-targets">TARGET_CHANNELS (comma-separated)</label>
+            <input id="tgr-targets" class="field" placeholder="-100111…, @mirror1, https://t.me/c/2222222222">
+          </div>
+          <div class="mt-3">
+            <label class="flab" for="tgr-branding">CUSTOM_BRANDING_TEXT (appended)</label>
+            <input id="tgr-branding" class="field" placeholder="⚡ via @YourBrand" value="">
+          </div>
+          <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button id="tgr-btn-start" class="btn py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-500 text-slate-950 font-bold text-sm hover:opacity-95 flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 disabled:opacity-60">
+              <i data-lucide="play" class="w-4 h-4"></i><span data-label>Start Forwarder</span>
+            </button>
+            <button id="tgr-btn-stop" class="btn hidden py-3 rounded-xl border border-rose-500/50 text-rose-300 font-bold text-sm hover:bg-rose-500/10 flex items-center justify-center gap-2 disabled:opacity-60">
+              <i data-lucide="square" class="w-4 h-4"></i><span data-label>Stop Forwarder</span>
+            </button>
+          </div>
+          <p id="tgr-meta-relay" class="mono text-[10px] text-slate-600 mt-3 truncate">no binding yet</p>
+        </div>
+      </div>
+
+      <!-- right column: status + console -->
+      <div class="lg:col-span-7 space-y-6">
+        <div class="glass card rounded-2xl p-4 flex flex-wrap items-center gap-2">
+          <span id="tgr-chip-backend" class="chip chip-err"><span class="dot dot-blink"></span>BACKEND OFFLINE</span>
+          <span class="chip"><i data-lucide="activity" class="w-3 h-3"></i><span id="tgr-relay-count">0 relayed</span></span>
+          <span class="chip chip-off"><i data-lucide="clock" class="w-3 h-3"></i><span id="tgr-clock">--:--:--</span> UTC</span>
+          <span class="ml-auto mono text-[10px] text-slate-600 tracking-widest hidden sm:inline">POLLING /api/logs · /api/status</span>
+        </div>
+
+        <div id="tgr-offline" class="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 flex items-start gap-3">
+          <i data-lucide="triangle-alert" class="w-5 h-5 text-amber-400 shrink-0 mt-0.5"></i>
+          <div class="text-sm">
+            <p class="text-amber-200 font-semibold">Backend unreachable</p>
+            <p class="text-slate-400 mt-1">This preview is static. Run <span class="mono text-cyan-300 text-xs bg-slate-900 px-1.5 py-0.5 rounded">hypercorn main:app --bind 0.0.0.0:$PORT</span> and set the API base above (or serve this page from Quart). The console recovers automatically.</p>
+          </div>
+        </div>
+
+        <div class="console-wrap">
+          <div class="flex items-center gap-2 px-4 py-3 border-b border-slate-800/70 bg-slate-950/60">
+            <span class="w-2.5 h-2.5 rounded-full bg-rose-500/70"></span>
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-500/70"></span>
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500/70"></span>
+            <span class="mono text-[11px] text-slate-400 ml-2">relay://live-logs</span>
+            <div class="ml-auto flex items-center gap-2">
+              <input id="tgr-filter" class="field !py-1 !px-2.5 !text-[11px] !w-36 sm:!w-44" placeholder="filter logs…">
+              <button id="tgr-btn-pause" class="btn mono text-[10px] px-2.5 py-1.5 rounded-md border border-slate-700 text-slate-400 hover:border-slate-500"><span data-label>Pause</span></button>
+              <button id="tgr-btn-clear" class="btn mono text-[10px] px-2.5 py-1.5 rounded-md border border-slate-700 text-slate-400 hover:border-slate-500">Clear</button>
+            </div>
+          </div>
+          <div id="tgr-console" class="h-[560px] overflow-y-auto px-4 py-3 code-scroll">
+            <div class="logline"><span class="text-slate-600">--:--:--</span><span class="text-slate-500 font-semibold">SYSTEM </span><span class="text-slate-500">Console attached. Waiting for backend stream… every line here arrives from GET /api/logs.</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SOURCE ============ -->
+<section id="source" class="relative z-10 max-w-7xl mx-auto px-5 md:px-8 py-14">
+  <div class="reveal">
+    <div class="flex items-end justify-between flex-wrap gap-4 mb-8">
+      <div>
+        <p class="kicker mono text-[11px] text-emerald-400 mb-2">02 — FULL SOURCE · NO TRUNCATION</p>
+        <h2 class="text-3xl md:text-4xl font-bold tracking-tight">Every line, wired to Telegram</h2>
+        <p class="text-slate-500 mt-2 max-w-2xl text-sm md:text-base">Complete <span class="mono text-cyan-300">main.py</span> (Quart + Telethon + Hypercorn, embedded UI, OTP + Session ID login), pinned <span class="mono text-cyan-300">requirements.txt</span>, and a ready <span class="mono text-cyan-300">render.yaml</span>. Copy or download straight to your repo.</p>
+      </div>
+      <div class="flex gap-2">
+        <button id="src-copy" class="btn mono text-[11px] px-4 py-2.5 rounded-lg bg-cyan-500 text-slate-950 font-bold hover:bg-cyan-400 flex items-center gap-2"><i data-lucide="clipboard-copy" class="w-4 h-4"></i>Copy file</button>
+        <button id="src-dl" class="btn mono text-[11px] px-4 py-2.5 rounded-lg border border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/10 flex items-center gap-2"><i data-lucide="download" class="w-4 h-4"></i>Download</button>
+      </div>
+    </div>
+
+    <div class="glass card rounded-2xl overflow-hidden">
+      <div class="flex items-center gap-1 px-3 pt-3 border-b border-slate-800/70 overflow-x-auto">
+        <button data-tab="main.py" class="tab src-tab mono text-[11px] px-4 py-2.5 rounded-t-lg border-b-2 border-cyan-400 text-cyan-300 bg-slate-900/60 flex items-center gap-2 whitespace-nowrap"><i data-lucide="file-code-2" class="w-3.5 h-3.5"></i>main.py</button>
+        <button data-tab="requirements.txt" class="tab src-tab mono text-[11px] px-4 py-2.5 rounded-t-lg border-b-2 border-transparent text-slate-500 hover:bg-slate-900/40 flex items-center gap-2 whitespace-nowrap"><i data-lucide="package" class="w-3.5 h-3.5"></i>requirements.txt</button>
+        <button data-tab="render.yaml" class="tab src-tab mono text-[11px] px-4 py-2.5 rounded-t-lg border-b-2 border-transparent text-slate-500 hover:bg-slate-900/40 flex items-center gap-2 whitespace-nowrap"><i data-lucide="cloud" class="w-3.5 h-3.5"></i>render.yaml</button>
+        <div class="ml-auto mono text-[10px] text-slate-600 pb-2 pr-2 hidden sm:flex items-center gap-3">
+          <span><span id="src-lines" class="text-slate-400">0</span> LINES</span>
+          <span><span id="src-bytes" class="text-slate-400">0</span> KB</span>
+        </div>
+      </div>
+      <div class="max-h-[640px] overflow-auto code-scroll">
+        <pre class="mono text-[12.5px] leading-relaxed py-4"><code id="src-view" class="code-body block text-slate-300"></code></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ DEPLOY / ARCHITECTURE ============ -->
+<section id="deploy" class="relative z-10 max-w-7xl mx-auto px-5 md:px-8 py-14 pb-24">
+  <div class="reveal">
+    <p class="kicker mono text-[11px] text-cyan-400 mb-2">03 — SHIP IT</p>
+    <h2 class="text-3xl md:text-4xl font-bold tracking-tight mb-10">From zero to relaying in four moves</h2>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
+      <div class="glass card rounded-2xl p-5">
+        <div class="w-9 h-9 rounded-lg bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center mono text-cyan-300 font-bold text-sm mb-4">1</div>
+        <h3 class="font-bold mb-1.5 text-sm">Get API credentials</h3>
+        <p class="text-slate-500 text-[13px] leading-relaxed">Create an app at <span class="mono text-cyan-300 text-xs">my.telegram.org</span> → API Development Tools. Copy <span class="mono text-xs text-slate-300">api_id</span> + <span class="mono text-xs text-slate-300">api_hash</span>.</p>
+      </div>
+      <div class="glass card rounded-2xl p-5">
+        <div class="w-9 h-9 rounded-lg bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center mono text-cyan-300 font-bold text-sm mb-4">2</div>
+        <h3 class="font-bold mb-1.5 text-sm">Push the 2 files</h3>
+        <p class="text-slate-500 text-[13px] leading-relaxed">Commit <span class="mono text-cyan-300 text-xs">main.py</span> and <span class="mono text-cyan-300 text-xs">requirements.txt</span> (optionally <span class="mono text-cyan-300 text-xs">render.yaml</span>) to a Git repo.</p>
+      </div>
+      <div class="glass card rounded-2xl p-5">
+        <div class="w-9 h-9 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center mono text-emerald-300 font-bold text-sm mb-4">3</div>
+        <h3 class="font-bold mb-1.5 text-sm">Render web service</h3>
+        <p class="text-slate-500 text-[13px] leading-relaxed">Build: <span class="mono text-cyan-300 text-xs">pip install -r requirements.txt</span><br>Start: <span class="mono text-cyan-300 text-xs">hypercorn main:app --bind 0.0.0.0:$PORT</span></p>
+      </div>
+      <div class="glass card rounded-2xl p-5">
+        <div class="w-9 h-9 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center mono text-emerald-300 font-bold text-sm mb-4">4</div>
+        <h3 class="font-bold mb-1.5 text-sm">Authenticate &amp; relay</h3>
+        <p class="text-slate-500 text-[13px] leading-relaxed">Open the dashboard → OTP or Session ID login → bind source → targets. Logs stream live.</p>
+      </div>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-6">
+      <div class="glass card rounded-2xl p-6">
+        <h3 class="font-bold flex items-center gap-2 mb-5"><i data-lucide="workflow" class="w-5 h-5 text-cyan-400"></i>Wire map — UI → Telethon</h3>
+        <div class="space-y-3 mono text-[12px]">
+          <div class="flex items-center gap-3 p-3 rounded-lg bg-slate-900/50 border border-slate-800"><span class="text-slate-400 w-36 shrink-0">Request OTP</span><i data-lucide="arrow-right" class="w-3.5 h-3.5 text-slate-600 shrink-0"></i><span class="text-cyan-300">client.send_code_request(phone)</span></div>
+          <div class="flex items-center gap-3 p-3 rounded-lg bg-slate-900/50 border border-slate-800"><span class="text-slate-400 w-36 shrink-0">Verify &amp; Connect</span><i data-lucide="arrow-right" class="w-3.5 h-3.5 text-slate-600 shrink-0"></i><span class="text-cyan-300">client.sign_in(code, phone_code_hash)</span></div>
+          <div class="flex items-center gap-3 p-3 rounded-lg bg-slate-900/50 border border-slate-800"><span class="text-slate-400 w-36 shrink-0">Login With Session</span><i data-lucide="arrow-right" class="w-3.5 h-3.5 text-slate-600 shrink-0"></i><span class="text-cyan-300">StringSession → is_user_authorized() → get_me()</span></div>
+          <div class="flex items-center gap-3 p-3 rounded-lg bg-slate-900/50 border border-slate-800"><span class="text-slate-400 w-36 shrink-0">2FA fallback</span><i data-lucide="arrow-right" class="w-3.5 h-3.5 text-slate-600 shrink-0"></i><span class="text-cyan-300">sign_in(password=) on SessionPasswordNeeded</span></div>
+          <div class="flex items-center gap-3 p-3 rounded-lg bg-slate-900/50 border border-slate-800"><span class="text-slate-400 w-36 shrink-0">Start Forwarder</span><i data-lucide="arrow-right" class="w-3.5 h-3.5 text-slate-600 shrink-0"></i><span class="text-emerald-300">@client.on(events.NewMessage)</span></div>
+          <div class="flex items-center gap-3 p-3 rounded-lg bg-slate-900/50 border border-slate-800"><span class="text-slate-400 w-36 shrink-0">Re-branded send</span><i data-lucide="arrow-right" class="w-3.5 h-3.5 text-slate-600 shrink-0"></i><span class="text-emerald-300">send_file(media, caption) / send_message(text)</span></div>
+          <div class="flex items-center gap-3 p-3 rounded-lg bg-slate-900/50 border border-slate-800"><span class="text-slate-400 w-36 shrink-0">Log Console</span><i data-lucide="arrow-right" class="w-3.5 h-3.5 text-slate-600 shrink-0"></i><span class="text-slate-300">custom logging.Handler ring buffer → JSON</span></div>
+        </div>
+      </div>
+      <div class="glass card rounded-2xl p-6">
+        <h3 class="font-bold flex items-center gap-2 mb-5"><i data-lucide="shield-check" class="w-5 h-5 text-emerald-400"></i>Production hardening, already inside</h3>
+        <ul class="space-y-3.5 text-[13px] text-slate-400">
+          <li class="flex gap-3"><i data-lucide="check" class="w-4 h-4 text-emerald-400 shrink-0 mt-0.5"></i><span><span class="text-slate-200 font-semibold">Full RPC error matrix</span> — PhoneNumberInvalid, PhoneCodeInvalid/Expired, PasswordHashInvalid (2FA), FloodWait (returns retry-after), ApiIdInvalid, PhoneNumberBanned.</span></li>
+          <li class="flex gap-3"><i data-lucide="check" class="w-4 h-4 text-emerald-400 shrink-0 mt-0.5"></i><span><span class="text-slate-200 font-semibold">Session ID login hardened</span> — malformed blob → 400, dead/revoked auth key → 401, duplicates rejected without leaking a second client, blob never logged nor returned.</span></li>
+          <li class="flex gap-3"><i data-lucide="check" class="w-4 h-4 text-emerald-400 shrink-0 mt-0.5"></i><span><span class="text-slate-200 font-semibold">Session lifecycle</span> — pending clients live in a keyed dict, stale OTP attempts swept + disconnected by a Hypercorn background task.</span></li>
+          <li class="flex gap-3"><i data-lucide="check" class="w-4 h-4 text-emerald-400 shrink-0 mt-0.5"></i><span><span class="text-slate-200 font-semibold">Handler hygiene</span> — start is idempotent-restart; stop detaches the exact NewMessage builder. No duplicate relay loops, ever.</span></li>
+          <li class="flex gap-3"><i data-lucide="check" class="w-4 h-4 text-emerald-400 shrink-0 mt-0.5"></i><span><span class="text-slate-200 font-semibold">Media-aware relay</span> — photos, docs &amp; video re-upload via send_file with re-branded captions; service messages skipped.</span></li>
+          <li class="flex gap-3"><i data-lucide="check" class="w-4 h-4 text-emerald-400 shrink-0 mt-0.5"></i><span><span class="text-slate-200 font-semibold">Connect timeout + graceful shutdown</span> — 25s wait_for on connect; after_serving disconnects every Telethon client.</span></li>
+          <li class="flex gap-3"><i data-lucide="check" class="w-4 h-4 text-emerald-400 shrink-0 mt-0.5"></i><span><span class="text-slate-200 font-semibold">CORS enabled</span> — drive the API from any origin; string sessions returned once at OTP verify, never re-exposed by /api/status.</span></li>
+        </ul>
+        <div class="mt-6 rounded-xl border border-amber-500/25 bg-amber-500/5 p-4 text-[12px] text-amber-200/80 flex gap-3">
+          <i data-lucide="info" class="w-4 h-4 shrink-0 mt-0.5 text-amber-400"></i>
+          <span>Note: Render free instances restart on redeploy, evicting in-memory clients — simply re-run OTP or re-login with your saved StringSession. Persist sessions in your own secret store for zero-reconnect deploys.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="relative z-10 border-t border-slate-800/60 py-10">
+  <div class="max-w-7xl mx-auto px-5 md:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+    <div class="flex items-center gap-3">
+      <span class="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-emerald-500 flex items-center justify-center"><i data-lucide="zap" class="w-4 h-4 text-slate-950"></i></span>
+      <span class="mono text-xs text-slate-500 tracking-widest">TG RELAY — QUART · TELETHON · HYPERCORN</span>
+    </div>
+    <span class="mono text-[10px] text-slate-600 tracking-[.2em]">REAL WIRE CALLS ONLY · NO MOCKS WERE HARMED</span>
+  </div>
+</footer>
+
+<!-- ================= FULL main.py PAYLOAD (escaped <\/script for safe transport, restored on view/copy) ================= -->
+<script type="text/plain" id="payload-mainpy"># ============================================================================
+# TG RELAY - Production Telegram Channel Forwarder
+# Quart + Telethon + Hypercorn  |  single-file application (UI embedded)
+# v1.1 — adds Session ID Login (StringSession) alongside OTP auth
+#
+# Deploy on Render:
+#   build:  pip install -r requirements.txt
+#   start:  hypercorn main:app --bind 0.0.0.0:$PORT
+# ============================================================================
+
+import os
+import re
+import time
+import asyncio
+import logging
+from collections import deque
+from datetime import datetime, timezone
+
+from quart import Quart, request, jsonify, render_template_string
+from telethon import TelegramClient, events, errors
+from telethon.sessions import StringSession
+
+# ----------------------------------------------------------------------------
+# Logging: ring buffer + stdout so Render captures the same stream the UI shows
+# ----------------------------------------------------------------------------
+
+LOG_BUFFER = deque(maxlen=500)
+LOG_SEQ = [0]
+
+
+class BufferLogHandler(logging.Handler):
+    def emit(self, record):
+        try:
+            LOG_SEQ[0] += 1
+            LOG_BUFFER.append({
+                "id": LOG_SEQ[0],
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "level": record.levelname,
+                "source": record.name,
+                "message": record.getMessage(),
+            })
+        except Exception:
+            self.handleError(record)
+
+
+logger = logging.getLogger("tgrelay")
+logger.setLevel(logging.DEBUG)
+logger.propagate = False
+logger.addHandler(BufferLogHandler())
+_stdout = logging.StreamHandler()
+_stdout.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(message)s"))
+logger.addHandler(_stdout)
+
+# ----------------------------------------------------------------------------
+# App + in-memory state (per Hypercorn worker)
+# ----------------------------------------------------------------------------
+
+app = Quart(__name__)
+
+PENDING = {}          # phone -> {"client","phone_code_hash","api_id","api_hash","ts"}
+ACTIVE = {}           # phone -> {"client","account","connected_at"}
+PENDING_TTL = 600.0   # seconds an OTP attempt stays valid in memory
+STATE_LOCK = asyncio.Lock()
+
+FWD = {
+    "running": False, "handler": None, "builder": None, "client": None,
+    "phone": None, "source": None, "targets": [], "branding": "",
+    "forwarded": 0, "failed": 0, "started_at": None,
+}
+
+def utcnow():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def mask_phone(phone):
+    digits = re.sub(r"\D", "", str(phone))
+    if len(digits) <= 4:
+        return "***"
+    return "+" + digits[:3] + "******" + digits[-2:]
+
+
+def parse_ident(raw):
+    """Normalize -100 ids, @usernames, t.me/<user> and t.me/c/<id> links."""
+    s = str(raw).strip()
+    if not s:
+        raise ValueError("empty identifier")
+    s = s.split("?")[0].rstrip("/")
+    m = re.match(r"^(?:https?://)?t\.me/c/(\d+)(?:/\d+)?$", s)
+    if m:
+        return int("-100" + m.group(1))
+    m = re.match(r"^(?:https?://)?t\.me/([\w]+)$", s)
+    if m:
+        return m.group(1)
+    if s.startswith("@"):
+        return s[1:]
+    if re.fullmatch(r"-?\d+", s):
+        return int(s)
+    return s
+
+
+def entity_title(entity):
+    return (getattr(entity, "title", None)
+            or getattr(entity, "username", None)
+            or getattr(entity, "first_name", None)
+            or str(getattr(entity, "id", "?")))
+
+
+async def safe_disconnect(client):
+    try:
+        if client and client.is_connected():
+            await client.disconnect()
+    except Exception as exc:
+        logger.debug("Disconnect notice: %s", exc)
+
+
+async def drop_pending(phone):
+    entry = PENDING.pop(phone, None)
+    if entry:
+        await safe_disconnect(entry["client"])
+
+
+def active_account_or_sole(phone):
+    if phone and phone in ACTIVE:
+        return phone, ACTIVE[phone]
+    if not phone and len(ACTIVE) == 1:
+        key = next(iter(ACTIVE))
+        return key, ACTIVE[key]
+    return None, None
+
+
+def rpc_error_payload(exc):
+    name = type(exc).__name__
+    if isinstance(exc, errors.FloodWaitError):
+        return 429, "FloodWait: retry after %s seconds" % exc.seconds
+    if isinstance(exc, errors.PhoneNumberInvalidError):
+        return 400, "Phone number is invalid on Telegram."
+    if isinstance(exc, errors.PhoneNumberBannedError):
+        return 403, "This phone number is banned from Telegram."
+    if isinstance(exc, errors.PhoneCodeInvalidError):
+        return 400, "OTP code is invalid. Check and retry."
+    if isinstance(exc, errors.PhoneCodeExpiredError):
+        return 410, "OTP code expired. Request a fresh code."
+    if isinstance(exc, errors.PasswordHashInvalidError):
+        return 400, "Two-factor password is incorrect."
+    if isinstance(exc, errors.ApiIdInvalidError):
+        return 400, "API_ID / API_HASH pair is invalid."
+    return 500, "%s: %s" % (name, exc)
+
+
+# ----------------------------------------------------------------------------
+# Lifecycle
+# ----------------------------------------------------------------------------
+
+async def pending_sweeper():
+    while True:
+        await asyncio.sleep(120)
+        now = time.time()
+        stale = [p for p, e in list(PENDING.items()) if now - e["ts"] > PENDING_TTL]
+        for phone in stale:
+            logger.info("Sweeper: expiring stale OTP attempt for %s", mask_phone(phone))
+            await drop_pending(phone)
+
+
+@app.before_serving
+async def boot():
+    logger.info("Hypercorn worker online — Quart app booted, PID %s", os.getpid())
+    logger.info("Routes armed: /api/send-otp /api/verify-otp /api/login-session "
+                "/api/start-forwarder /api/stop-forwarder /api/logs /api/status /api/health")
+    app.add_background_task(pending_sweeper)
+
+
+@app.after_serving
+async def shutdown():
+    await stop_forwarder_internal()
+    for phone in list(PENDING):
+        await drop_pending(phone)
+    for phone, entry in list(ACTIVE.items()):
+        await safe_disconnect(entry["client"])
+        ACTIVE.pop(phone, None)
+    logger.info("Shutdown complete — all Telethon clients disconnected.")
+
+
+# ----------------------------------------------------------------------------
+# CORS (drive the API from any dashboard origin)
+# ----------------------------------------------------------------------------
+
+@app.before_request
+async def cors_preflight():
+    if request.method == "OPTIONS":
+        return "", 204
+
+
+@app.after_request
+async def cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    return response
+
+
+# ----------------------------------------------------------------------------
+# API: OTP
+# ----------------------------------------------------------------------------
+
+@app.route("/api/send-otp", methods=["POST"])
+async def api_send_otp():
+    data = await request.get_json(force=True, silent=True) or {}
+    try:
+        api_id = int(str(data.get("api_id", "")).strip())
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "api_id must be an integer."}), 400
+    api_hash = str(data.get("api_hash", "")).strip()
+    phone = str(data.get("phone", "")).strip()
+    if not api_hash or not phone:
+        return jsonify({"ok": False, "error": "api_hash and phone are required."}), 400
+
+    if phone in ACTIVE:
+        acct = ACTIVE[phone]["account"]
+        return jsonify({"ok": True, "already_connected": True, "account": acct,
+                        "message": "Session already authorized."})
+
+    try:
+        async with STATE_LOCK:
+            await drop_pending(phone)
+            client = TelegramClient(StringSession(), api_id, api_hash,
+                                    device_model="TG Relay Web",
+                                    system_version="Hypercorn/Quart",
+                                    app_version="1.1.0")
+            await asyncio.wait_for(client.connect(), timeout=25)
+            logger.info("send-otp: MTProto connection up for %s", mask_phone(phone))
+            sent = await client.send_code_request(phone)
+            PENDING[phone] = {
+                "client": client,
+                "phone_code_hash": sent.phone_code_hash,
+                "api_id": api_id,
+                "api_hash": api_hash,
+                "ts": time.time(),
+            }
+        code_type = type(sent.type).__name__
+        logger.info("send-otp: code dispatched to %s via %s", mask_phone(phone), code_type)
+        return jsonify({"ok": True, "message": "OTP dispatched via Telegram.",
+                        "code_type": code_type})
+    except asyncio.TimeoutError:
+        await drop_pending(phone)
+        return jsonify({"ok": False, "error": "Timed out connecting to Telegram DC."}), 504
+    except errors.RPCError as exc:
+        status, msg = rpc_error_payload(exc)
+        logger.warning("send-otp failed for %s: %s", mask_phone(phone), msg)
+        await drop_pending(phone)
+        return jsonify({"ok": False, "error": msg}), status
+    except Exception as exc:
+        logger.exception("send-otp unexpected failure")
+        await drop_pending(phone)
+        return jsonify({"ok": False, "error": "Unexpected: %s" % exc}), 500
+
+
+@app.route("/api/verify-otp", methods=["POST"])
+async def api_verify_otp():
+    data = await request.get_json(force=True, silent=True) or {}
+    phone = str(data.get("phone", "")).strip()
+    code = str(data.get("otp_code", "")).strip().replace(" ", "")
+    password = str(data.get("password", "")).strip()
+    if not phone or not code:
+        return jsonify({"ok": False, "error": "phone and otp_code are required."}), 400
+
+    entry = PENDING.get(phone)
+    if not entry:
+        return jsonify({"ok": False, "error": "No pending login for this phone. "
+                                              "Request a new OTP first."}), 400
+    if time.time() - entry["ts"] > PENDING_TTL:
+        await drop_pending(phone)
+        return jsonify({"ok": False, "error": "OTP attempt expired (10 min). "
+                                              "Request a new code."}), 410
+
+    client = entry["client"]
+    try:
+        if not client.is_connected():
+            await asyncio.wait_for(client.connect(), timeout=25)
+        try:
+            await client.sign_in(phone=phone, code=code,
+                                 phone_code_hash=entry["phone_code_hash"])
+        except errors.SessionPasswordNeededError:
+            logger.info("verify: 2FA cloud password required for %s", mask_phone(phone))
+            if not password:
+                return jsonify({"ok": False, "need_password": True,
+                                "message": "Two-step verification is ON — provide the "
+                                           "cloud password and submit again."})
+            await client.sign_in(password=password)
+
+        me = await client.get_me()
+        string_session = client.session.save()
+        account = {
+            "id": me.id,
+            "username": me.username,
+            "first_name": me.first_name,
+            "phone": phone,
+        }
+        ACTIVE[phone] = {"client": client, "account": account,
+                         "connected_at": utcnow()}
+        PENDING.pop(phone, None)
+        logger.info("verify: CONNECTED %s as @%s (id=%s)",
+                    mask_phone(phone), me.username or "-", me.id)
+        return jsonify({"ok": True, "connected": True, "account": account,
+                        "string_session": string_session,
+                        "message": "Account connected. Store the string session safely."})
+    except errors.RPCError as exc:
+        status, msg = rpc_error_payload(exc)
+        logger.warning("verify failed for %s: %s", mask_phone(phone), msg)
+        if status == 410:
+            await drop_pending(phone)
+        return jsonify({"ok": False, "error": msg}), status
+    except Exception as exc:
+        logger.exception("verify unexpected failure")
+        return jsonify({"ok": False, "error": "Unexpected: %s" % exc}), 500
+
+
+# ----------------------------------------------------------------------------
+# API: Session ID login (StringSession) — NEW in v1.1
+# ----------------------------------------------------------------------------
+
+@app.route("/api/login-session", methods=["POST"])
+async def api_login_session():
+    data = await request.get_json(force=True, silent=True) or {}
+    try:
+        api_id = int(str(data.get("api_id", "")).strip())
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "api_id must be an integer."}), 400
+    api_hash = str(data.get("api_hash", "")).strip()
+    session_string = str(data.get("session_string", "")).strip()
+    if not api_hash or not session_string:
+        return jsonify({"ok": False,
+                        "error": "api_hash and session_string are required."}), 400
+
+    # SECURITY: the session string is NEVER logged — length only.
+    logger.info("session-login: verifying %s-char StringSession (blob redacted)",
+                len(session_string))
+
+    try:
+        parsed = StringSession(session_string)
+    except Exception:
+        logger.warning("session-login: rejected — blob is not a decodable StringSession")
+        return jsonify({"ok": False,
+                        "error": "Session string is malformed. Paste the exact output "
+                                 "of StringSession.save() (starts with '1BQ…')."}), 400
+
+    client = TelegramClient(parsed, api_id, api_hash,
+                            device_model="TG Relay Web",
+                            system_version="Hypercorn/Quart",
+                            app_version="1.1.0")
+    try:
+        await asyncio.wait_for(client.connect(), timeout=25)
+        try:
+            authorized = await client.is_user_authorized()
+        except errors.AuthKeyUnregisteredError:
+            authorized = False
+        if not authorized:
+            await safe_disconnect(client)
+            logger.warning("session-login: auth key rejected by Telegram (expired/revoked)")
+            return jsonify({"ok": False,
+                            "error": "Session is invalid or expired — Telegram rejected "
+                                     "the auth key. Generate a fresh StringSession."}), 401
+
+        me = await client.get_me()
+        phone = "+" + me.phone if me.phone else "session-%s" % me.id
+
+        if phone in ACTIVE:
+            # Prevent duplicate accounts: drop the fresh client, keep the live one.
+            await safe_disconnect(client)
+            logger.info("session-login: %s already active as @%s",
+                        mask_phone(phone), me.username or me.id)
+            return jsonify({"ok": True, "already_connected": True,
+                            "account": ACTIVE[phone]["account"],
+                            "message": "Account already active."})
+
+        account = {
+            "id": me.id,
+            "username": me.username,
+            "first_name": me.first_name,
+            "phone": phone,
+        }
+        ACTIVE[phone] = {"client": client, "account": account,
+                         "connected_at": utcnow()}
+        logger.info("session-login: CONNECTED %s as @%s (id=%s)",
+                    mask_phone(phone), me.username or "-", me.id)
+        # SECURITY: response carries ONLY the account record — no session string.
+        return jsonify({"ok": True, "connected": True, "account": account,
+                        "message": "Session verified and account connected."})
+    except asyncio.TimeoutError:
+        await safe_disconnect(client)
+        return jsonify({"ok": False,
+                        "error": "Timed out connecting to Telegram DC."}), 504
+    except errors.RPCError as exc:
+        status, msg = rpc_error_payload(exc)
+        logger.warning("session-login RPC failure: %s", msg)
+        await safe_disconnect(client)
+        return jsonify({"ok": False, "error": msg}), status
+    except Exception as exc:
+        logger.exception("session-login unexpected failure")
+        await safe_disconnect(client)
+        return jsonify({"ok": False, "error": "Unexpected: %s" % exc}), 500
+
+
+# ----------------------------------------------------------------------------
+# API: Forwarder
+# ----------------------------------------------------------------------------
+
+async def stop_forwarder_internal():
+    if FWD["handler"] and FWD["client"]:
+        try:
+            FWD["client"].remove_event_handler(FWD["handler"], FWD["builder"])
+        except (ValueError, KeyError):
+            pass
+    was = FWD["running"]
+    FWD.update({"running": False, "handler": None, "builder": None, "client": None,
+                "phone": None, "source": None, "targets": [], "branding": "",
+                "started_at": None})
+    return was
+
+
+@app.route("/api/start-forwarder", methods=["POST"])
+async def api_start_forwarder():
+    data = await request.get_json(force=True, silent=True) or {}
+    phone = str(data.get("phone", "")).strip()
+    branding = str(data.get("custom_branding_text", "")).strip()
+    src_raw = str(data.get("source_channel_id", "")).strip()
+    targets_raw = [t.strip() for t in str(data.get("target_channels", "")).split(",")]
+
+    if not src_raw or not any(targets_raw):
+        return jsonify({"ok": False, "error": "source_channel_id and at least one "
+                                              "target channel are required."}), 400
+
+    used_phone, entry = active_account_or_sole(phone)
+    if not entry:
+        return jsonify({"ok": False, "error": "No connected account. Complete OTP "
+                                              "verification first."}), 409
+    client = entry["client"]
+    if not client.is_connected():
+        await asyncio.wait_for(client.connect(), timeout=25)
+
+    try:
+        src_ident = parse_ident(src_raw)
+    except ValueError:
+        return jsonify({"ok": False, "error": "source_channel_id is not parseable. "
+                                              "Use -100… id, @username or t.me link."}), 422
+
+    ident_list = []
+    for raw in targets_raw:
+        if not raw:
+            continue
+        try:
+            ident_list.append(parse_ident(raw))
+        except ValueError:
+            return jsonify({"ok": False, "error": "Unparseable target: %s" % raw}), 422
+    if not ident_list:
+        return jsonify({"ok": False, "error": "No usable target channels supplied."}), 400
+
+    try:
+        source_entity = await client.get_entity(src_ident)
+    except Exception:
+        return jsonify({"ok": False, "error": "Source not visible to this account. "
+                                              "Join it first (and be admin where needed)."}), 404
+    resolved = []
+    for ident in ident_list:
+        try:
+            ent = await client.get_entity(ident)
+            resolved.append({"entity": ent, "title": entity_title(ent)})
+        except Exception:
+            logger.warning("start: target %s not resolvable by account", ident)
+    if not resolved:
+        return jsonify({"ok": False, "error": "None of the targets resolve. The account "
+                                              "must be a member of each target."}), 404
+
+    src_title = entity_title(source_entity)
+
+    async with STATE_LOCK:
+        if await stop_forwarder_internal():
+            logger.info("start: detached previous forwarder binding (restart).")
+
+        builder = events.NewMessage(chats=source_entity)
+
+        async def relay(event):
+            msg = event.message
+            if getattr(msg, "action", None):
+                return  # skip service messages
+            body = (msg.message or "").strip()
+            branded = (body + "\n\n" + branding).strip() if branding else body
+            for target in FWD["targets"]:
+                ent = target["entity"]
+                try:
+                    if msg.media is not None:
+                        await client.send_file(ent, msg.media,
+                                               caption=(branded or None))
+                    else:
+                        if not branded:
+                            continue
+                        await client.send_message(ent, branded, link_preview=False)
+                    FWD["forwarded"] += 1
+                    logger.info("relay: msg %s → %s", msg.id, target["title"])
+                except errors.FloodWaitError as fw:
+                    logger.warning("relay: FloodWait %ss on %s", fw.seconds, target["title"])
+                except Exception as exc:
+                    FWD["failed"] += 1
+                    logger.error("relay: send to %s failed: %s", target["title"], exc)
+
+        client.add_event_handler(relay, builder)
+        FWD.update({
+            "running": True, "handler": relay, "builder": builder, "client": client,
+            "phone": used_phone, "source": {"title": src_title,
+                                            "id": getattr(source_entity, "id", None)},
+            "targets": resolved, "branding": branding,
+            "forwarded": 0, "failed": 0, "started_at": utcnow(),
+        })
+    logger.info("start: FORWARDER LIVE %s → %s", src_title,
+                ", ".join(t["title"] for t in resolved))
+    return jsonify({
+        "ok": True,
+        "message": "Forwarder bound. Listening for new messages.",
+        "source": {"title": src_title, "id": getattr(source_entity, "id", None)},
+        "targets": [{"title": t["title"]} for t in resolved],
+        "branding": branding,
+    })
+
+
+@app.route("/api/stop-forwarder", methods=["POST"])
+async def api_stop_forwarder():
+    async with STATE_LOCK:
+        was = await stop_forwarder_internal()
+    if was:
+        logger.info("stop: forwarder stopped (forwarded=%s failed=%s)",
+                    FWD["forwarded"], FWD["failed"])
+        return jsonify({"ok": True, "message": "Forwarder stopped. Handler detached."})
+    return jsonify({"ok": False, "error": "Forwarder is not running."}), 409
+
+
+# ----------------------------------------------------------------------------
+# API: logs / status / health
+# ----------------------------------------------------------------------------
+
+@app.route("/api/logs", methods=["GET"])
+async def api_logs():
+    try:
+        since = int(request.args.get("since", "0"))
+    except ValueError:
+        since = 0
+    fresh = [row for row in LOG_BUFFER if row["id"] > since]
+    return jsonify({"ok": True, "logs": fresh, "latest": LOG_SEQ[0]})
+
+
+@app.route("/api/status", methods=["GET"])
+async def api_status():
+    accounts = []
+    for phone, entry in ACTIVE.items():
+        a = dict(entry["account"])
+        a["phone"] = mask_phone(a.get("phone", phone))
+        a["connected_at"] = entry["connected_at"]
+        accounts.append(a)
+    return jsonify({
+        "ok": True,
+        "server_time": utcnow(),
+        "accounts": accounts,
+        "pending_logins": len(PENDING),
+        "forwarder": {
+            "running": FWD["running"],
+            "phone": mask_phone(FWD["phone"]) if FWD["phone"] else None,
+            "source": FWD["source"],
+            "targets": [t["title"] for t in FWD["targets"]],
+            "branding": FWD["branding"],
+            "forwarded": FWD["forwarded"],
+            "failed": FWD["failed"],
+            "started_at": FWD["started_at"],
+        },
+    })
+
+
+@app.route("/api/health", methods=["GET"])
+async def api_health():
+    return jsonify({"ok": True, "ts": utcnow()})
+
+
+# ----------------------------------------------------------------------------
+# Embedded dashboard
+# ----------------------------------------------------------------------------
+
+DASHBOARD_HTML = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TG RELAY — Control Deck</title>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"><\/script>
+<script src="https://unpkg.com/lucide@latest"><\/script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  body { font-family: 'Space Grotesk', system-ui, sans-serif; background: #04060c; color: #e2e8f0; min-height: 100vh; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  .glass { background: linear-gradient(160deg, rgba(15,23,42,.85), rgba(2,6,23,.92)); border: 1px solid rgba(148,163,184,.12); backdrop-filter: blur(12px); }
+  .field { width: 100%; background: rgba(2,6,23,.75); border: 1px solid rgba(148,163,184,.15); border-radius: .6rem; padding: .6rem .8rem; font-family: 'JetBrains Mono', monospace; font-size: .8rem; color: #e2e8f0; outline: none; transition: border-color .25s, box-shadow .25s; }
+  .field:focus { border-color: rgba(6,182,212,.6); box-shadow: 0 0 0 3px rgba(6,182,212,.12); }
+  .field::placeholder { color: #475569; }
+  .flab { font-family: 'JetBrains Mono', monospace; font-size: .6rem; letter-spacing: .16em; color: #7d8ca3; display: block; margin-bottom: .35rem; }
+  .chip { display: inline-flex; align-items: center; gap: .35rem; font-family: 'JetBrains Mono', monospace; font-size: .6rem; letter-spacing: .12em; padding: .28rem .6rem; border-radius: 9999px; border: 1px solid rgba(148,163,184,.18); color: #94a3b8; background: rgba(15,23,42,.6); white-space: nowrap; }
+  .chip-on { border-color: rgba(16,185,129,.45); color: #34d399; background: rgba(16,185,129,.08); }
+  .chip-live { border-color: rgba(6,182,212,.5); color: #22d3ee; background: rgba(6,182,212,.1); }
+  .chip-err { border-color: rgba(244,63,94,.45); color: #fb7185; background: rgba(244,63,94,.08); }
+  .chip-off { border-color: rgba(148,163,184,.2); color: #64748b; }
+  .dot { width: 6px; height: 6px; border-radius: 9999px; background: currentColor; }
+  .btn { transition: all .2s ease; }
+  .btn:active { transform: scale(.97); }
+  .logline { display: grid; grid-template-columns: 74px 62px 1fr; gap: .5rem; padding: .1rem 0; font-family: 'JetBrains Mono', monospace; font-size: .7rem; line-height: 1.5; word-break: break-word; }
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-track { background: #0a0f1a; }
+  ::-webkit-scrollbar-thumb { background: #164e63; border-radius: 8px; }
+  .toast { padding: .65rem .9rem; border-radius: .7rem; font-size: .78rem; border: 1px solid; margin-bottom: .5rem; opacity: 0; transform: translateY(8px); transition: all .3s ease; }
+  .toast.show { opacity: 1; transform: none; }
+  .toast-ok { border-color: rgba(16,185,129,.4); background: rgba(16,185,129,.1); color: #6ee7b7; }
+  .toast-err { border-color: rgba(244,63,94,.4); background: rgba(244,63,94,.1); color: #fda4af; }
+  .toast-warn { border-color: rgba(245,158,11,.4); background: rgba(245,158,11,.1); color: #fcd34d; }
+</style>
+</head>
+<body class="antialiased">
+<div class="fixed inset-0 pointer-events-none">
+  <div class="absolute w-96 h-96 rounded-full bg-cyan-500/15 blur-3xl -top-20 -left-20"></div>
+  <div class="absolute w-96 h-96 rounded-full bg-emerald-500/15 blur-3xl bottom-0 right-0"></div>
+</div>
+
+<header class="relative border-b border-slate-800/70 bg-slate-950/70 backdrop-blur">
+  <div class="max-w-6xl mx-auto px-5 h-16 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <span class="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500 to-emerald-500 flex items-center justify-center">
+        <i data-lucide="zap" class="w-5 h-5 text-slate-950"></i>
+      </span>
+      <div>
+        <span class="font-bold">TG<span class="text-cyan-400">RELAY</span></span>
+        <span class="mono text-[9px] text-slate-500 tracking-[.25em] block">QUART + TELETHON LIVE DECK</span>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <span id="chip-backend" class="chip chip-err"><span class="dot"></span>OFFLINE</span>
+      <span id="chip-account" class="chip chip-off"><span class="dot"></span>NO ACCOUNT</span>
+    </div>
+  </div>
+</header>
+
+<main class="relative max-w-6xl mx-auto px-5 py-8 grid lg:grid-cols-5 gap-6">
+  <div class="lg:col-span-2 space-y-6">
+
+    <section class="glass rounded-2xl p-5">
+      <h2 class="font-bold flex items-center gap-2 mb-4"><i data-lucide="key-round" class="w-4 h-4 text-cyan-400"></i>Account Session</h2>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="flab" for="in-api-id">API_ID</label><input id="in-api-id" class="field" placeholder="204xxxxx" inputmode="numeric"></div>
+        <div><label class="flab" for="in-api-hash">API_HASH</label><input id="in-api-hash" type="password" class="field" placeholder="0123abc…"></div>
+      </div>
+      <div class="mt-3"><label class="flab" for="in-phone">PHONE_NUMBER</label><input id="in-phone" class="field" placeholder="+1 555 000 1122"></div>
+      <button id="btn-otp" class="btn mt-4 w-full py-2.5 rounded-xl bg-cyan-500 text-slate-950 font-bold text-sm hover:bg-cyan-400 flex items-center justify-center gap-2 disabled:opacity-60">
+        <i data-lucide="send" class="w-4 h-4"></i><span data-label>Request OTP</span>
+      </button>
+
+      <div id="otp-block" class="hidden mt-5 pt-4 border-t border-dashed border-slate-700/70">
+        <div class="mono text-[9px] tracking-[.2em] text-emerald-300 mb-3 flex items-center gap-2"><span class="dot"></span>OTP BLOCK — CHECK TELEGRAM</div>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="flab" for="in-otp">OTP_CODE</label><input id="in-otp" class="field" placeholder="12345" autocomplete="one-time-code"></div>
+          <div><label class="flab" for="in-2fa">2FA (OPTIONAL)</label><input id="in-2fa" type="password" class="field" placeholder="cloud password"></div>
+        </div>
+        <button id="btn-verify" class="btn mt-4 w-full py-2.5 rounded-xl bg-emerald-500 text-slate-950 font-bold text-sm hover:bg-emerald-400 flex items-center justify-center gap-2 disabled:opacity-60">
+          <i data-lucide="shield-check" class="w-4 h-4"></i><span data-label>Verify &amp; Connect</span>
+        </button>
+        <div id="session-wrap" class="hidden mt-3">
+          <label class="flab" for="out-session">STRING SESSION — SECRET</label>
+          <div class="relative">
+            <textarea id="out-session" readonly class="field h-20 !text-[10px] resize-none pr-8"></textarea>
+            <button id="btn-copy-session" class="absolute top-2 right-2 text-slate-500 hover:text-cyan-300"><i data-lucide="copy" class="w-4 h-4"></i></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="glass rounded-2xl p-5">
+      <h2 class="font-bold flex items-center gap-2 mb-4"><i data-lucide="fingerprint" class="w-4 h-4 text-cyan-400"></i>Session ID Login</h2>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="flab" for="s-api-id">API_ID</label><input id="s-api-id" class="field" placeholder="204xxxxx" inputmode="numeric"></div>
+        <div><label class="flab" for="s-api-hash">API_HASH</label><input id="s-api-hash" type="password" class="field" placeholder="0123abc…"></div>
+      </div>
+      <div class="mt-3">
+        <label class="flab" for="s-session">TELEGRAM STRING SESSION</label>
+        <textarea id="s-session" class="field h-16 !text-[10px] resize-none leading-relaxed" placeholder="1BQAAAA… paste StringSession.save() output"></textarea>
+      </div>
+      <button id="btn-session" class="btn mt-4 w-full py-2.5 rounded-xl bg-emerald-500 text-slate-950 font-bold text-sm hover:bg-emerald-400 flex items-center justify-center gap-2 disabled:opacity-60">
+        <i data-lucide="log-in" class="w-4 h-4"></i><span data-label>Login With Session</span>
+      </button>
+      <p class="mono text-[9px] text-slate-600 mt-2">Verified via is_user_authorized() + get_me(). Blob never logged, never returned by the API.</p>
+    </section>
+
+    <section class="glass rounded-2xl p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="font-bold flex items-center gap-2"><i data-lucide="repeat-2" class="w-4 h-4 text-emerald-400"></i>Channel Forwarder</h2>
+        <span id="chip-relay" class="chip chip-off"><span class="dot"></span>IDLE</span>
+      </div>
+      <div><label class="flab" for="in-source">SOURCE_CHANNEL_ID</label><input id="in-source" class="field" placeholder="-100… / @user / t.me/c/…"></div>
+      <div class="mt-3"><label class="flab" for="in-targets">TARGET_CHANNELS</label><input id="in-targets" class="field" placeholder="-100…, @mirror1, t.me/c/…"></div>
+      <div class="mt-3"><label class="flab" for="in-branding">CUSTOM_BRANDING_TEXT</label><input id="in-branding" class="field" placeholder="via @YourBrand"></div>
+      <div class="mt-4 grid grid-cols-2 gap-3">
+        <button id="btn-start" class="btn py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-500 text-slate-950 font-bold text-sm hover:opacity-95 flex items-center justify-center gap-2 disabled:opacity-60">
+          <i data-lucide="play" class="w-4 h-4"></i><span data-label>Start Forwarder</span>
+        </button>
+        <button id="btn-stop" class="btn hidden py-2.5 rounded-xl border border-rose-500/50 text-rose-300 font-bold text-sm hover:bg-rose-500/10 flex items-center justify-center gap-2 disabled:opacity-60">
+          <i data-lucide="square" class="w-4 h-4"></i><span data-label>Stop</span>
+        </button>
+      </div>
+      <p id="meta-relay" class="mono text-[9px] text-slate-600 mt-3 truncate">no binding yet</p>
+      <p class="mono text-[9px] text-slate-600 mt-1"><span id="relay-count">0</span> relayed</p>
+    </section>
+  </div>
+
+  <section class="lg:col-span-3 glass rounded-2xl overflow-hidden flex flex-col">
+    <div class="flex items-center gap-2 px-4 py-3 border-b border-slate-800/70">
+      <span class="w-2.5 h-2.5 rounded-full bg-rose-500/70"></span>
+      <span class="w-2.5 h-2.5 rounded-full bg-amber-500/70"></span>
+      <span class="w-2.5 h-2.5 rounded-full bg-emerald-500/70"></span>
+      <span class="mono text-[10px] text-slate-400 ml-2">relay://live-logs</span>
+      <div class="ml-auto flex items-center gap-2">
+        <input id="in-filter" class="field !py-1 !px-2 !text-[10px] !w-32" placeholder="filter…">
+        <button id="btn-pause" class="btn mono text-[10px] px-2 py-1 rounded border border-slate-700 text-slate-400 hover:border-slate-500"><span data-label>Pause</span></button>
+        <button id="btn-clear" class="btn mono text-[10px] px-2 py-1 rounded border border-slate-700 text-slate-400 hover:border-slate-500">Clear</button>
+      </div>
+    </div>
+    <div id="console-body" class="flex-1 min-h-[560px] max-h-[640px] overflow-y-auto px-4 py-3">
+      <div class="logline"><span class="text-slate-600">--:--:--</span><span class="text-slate-500 font-semibold">SYSTEM </span><span class="text-slate-500">Console attached. Streaming GET /api/logs…</span></div>
+    </div>
+  </section>
+</main>
+
+<div id="toasts" class="fixed bottom-4 right-4 z-50 w-80"></div>
+
+<script>
+(function () {
+  var state = { phone: "", since: 0, paused: false, filter: "" };
+  function $(id) { return document.getElementById(id); }
+  function val(id) { var el = $(id); return el ? el.value.trim() : ""; }
+  function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+  function toast(msg, kind) {
+    var div = document.createElement("div");
+    div.className = "toast " + (kind === "error" ? "toast-err" : (kind === "warn" ? "toast-warn" : "toast-ok"));
+    div.textContent = msg;
+    $("toasts").appendChild(div);
+    setTimeout(function () { div.classList.add("show"); }, 10);
+    setTimeout(function () { div.classList.remove("show"); setTimeout(function () { div.remove(); }, 300); }, 4600);
+  }
+
+  function setBusy(id, busy, busyText) {
+    var b = $(id);
+    if (!b) return;
+    b.disabled = busy;
+    var label = b.querySelector("[data-label]");
+    if (label) {
+      if (!label.dataset.orig) label.dataset.orig = label.textContent;
+      label.textContent = busy ? (busyText || "Working…") : label.dataset.orig;
+    }
+  }
+
+  async function post(path, payload) {
+    var res = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    var data = null;
+    try { data = await res.json(); } catch (e) { data = { ok: false, error: "Non-JSON response (" + res.status + ")" }; }
+    return { status: res.status, data: data };
+  }
+
+  async function requestOtp() {
+    var apiId = parseInt(val("in-api-id"), 10);
+    var payload = { api_id: apiId, api_hash: val("in-api-hash"), phone: val("in-phone") };
+    if (!apiId || !payload.api_hash || !payload.phone) { toast("Fill API_ID, API_HASH and phone.", "warn"); return; }
+    setBusy("btn-otp", true, "Sending…");
+    try {
+      var r = await post("/api/send-otp", payload);
+      if (r.data.already_connected) { markConnected(r.data, false); toast("Already authorized.", "ok"); return; }
+      if (!r.data.ok) { toast(r.data.error || "OTP failed (" + r.status + ")", "error"); return; }
+      state.phone = payload.phone;
+      $("otp-block").classList.remove("hidden");
+      toast("OTP dispatched via Telegram (" + (r.data.code_type || "app") + ").", "ok");
+    } catch (e) { toast("Network error: " + e.message, "error"); }
+    finally { setBusy("btn-otp", false); }
+  }
+
+  async function verifyOtp() {
+    var payload = { phone: val("in-phone") || state.phone, otp_code: val("in-otp"), password: val("in-2fa") };
+    if (!payload.phone || !payload.otp_code) { toast("Phone and OTP code required.", "warn"); return; }
+    setBusy("btn-verify", true, "Verifying…");
+    try {
+      var r = await post("/api/verify-otp", payload);
+      if (r.data.need_password) { toast(r.data.message || "2FA password required.", "warn"); $("in-2fa").focus(); return; }
+      if (!r.data.ok) { toast(r.data.error || "Verify failed (" + r.status + ")", "error"); return; }
+      markConnected(r.data, true);
+      toast("Connected as @" + (r.data.account.username || r.data.account.id), "ok");
+    } catch (e) { toast("Network error: " + e.message, "error"); }
+    finally { setBusy("btn-verify", false); }
+  }
+
+  async function sessionLogin() {
+    var payload = {
+      api_id: parseInt(val("s-api-id") || val("in-api-id"), 10),
+      api_hash: val("s-api-hash") || val("in-api-hash"),
+      session_string: val("s-session")
+    };
+    if (!payload.api_id || !payload.api_hash || !payload.session_string) {
+      toast("API_ID, API_HASH and String Session are required.", "warn"); return;
+    }
+    setBusy("btn-session", true, "Verifying…");
+    try {
+      var r = await post("/api/login-session", payload);
+      if (!r.data.ok) { toast(r.data.error || "session login failed (" + r.status + ")", "error"); return; }
+      if (!r.data.already_connected) $("s-session").value = "";
+      markConnected(r.data, false);
+      var who = "@" + (r.data.account.username || r.data.account.id);
+      toast((r.data.already_connected ? "Already active: " : "Session verified: ") + who, "ok");
+    } catch (e) { toast("Network error: " + e.message, "error"); }
+    finally { setBusy("btn-session", false); }
+  }
+
+  function markConnected(data, withSession) {
+    state.phone = data.account.phone || state.phone;
+    var chip = $("chip-account");
+    chip.textContent = "@" + (data.account.username || data.account.id);
+    chip.className = "chip chip-on";
+    if (withSession && data.string_session) {
+      $("session-wrap").classList.remove("hidden");
+      $("out-session").value = data.string_session;
+    }
+  }
+
+  function copySession() {
+    var el = $("out-session");
+    var done = function () { toast("String session copied — guard it like a password.", "ok"); };
+    el.select();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(el.value).then(done, function () { document.execCommand("copy"); done(); });
+    } else { document.execCommand("copy"); done(); }
+  }
+
+  async function startForwarder() {
+    var payload = {
+      phone: state.phone || val("in-phone"),
+      source_channel_id: val("in-source"),
+      target_channels: val("in-targets"),
+      custom_branding_text: val("in-branding")
+    };
+    if (!payload.source_channel_id || !payload.target_channels) { toast("Source and targets required.", "warn"); return; }
+    setBusy("btn-start", true, "Binding…");
+    try {
+      var r = await post("/api/start-forwarder", payload);
+      if (!r.data.ok) { toast(r.data.error || "Start failed (" + r.status + ")", "error"); return; }
+      $("chip-relay").textContent = "RELAY LIVE";
+      $("chip-relay").className = "chip chip-live";
+      $("btn-start").classList.add("hidden");
+      $("btn-stop").classList.remove("hidden");
+      $("meta-relay").textContent = r.data.source.title + " → " + r.data.targets.map(function (t) { return t.title; }).join(", ");
+      toast("Forwarder bound. Listening for new messages.", "ok");
+    } catch (e) { toast("Network error: " + e.message, "error"); }
+    finally { setBusy("btn-start", false); }
+  }
+
+  async function stopForwarder() {
+    setBusy("btn-stop", true, "Stopping…");
+    try {
+      var r = await post("/api/stop-forwarder", { phone: state.phone || val("in-phone") });
+      if (!r.data.ok) { toast(r.data.error || "Stop failed", "error"); return; }
+      $("chip-relay").textContent = "IDLE";
+      $("chip-relay").className = "chip chip-off";
+      $("btn-start").classList.remove("hidden");
+      $("btn-stop").classList.add("hidden");
+      toast("Forwarder stopped. Handler detached.", "ok");
+    } catch (e) { toast("Network error: " + e.message, "error"); }
+    finally { setBusy("btn-stop", false); }
+  }
+
+  function appendLog(row) {
+    if (state.filter) {
+      var hay = (row.level + " " + row.message).toLowerCase();
+      if (hay.indexOf(state.filter) === -1) return;
+    }
+    var host = $("console-body");
+    var lvl = String(row.level || "INFO").toUpperCase();
+    var cls = (lvl === "ERROR" || lvl === "CRITICAL") ? "text-rose-400" : (lvl === "WARNING" ? "text-amber-400" : (lvl === "DEBUG" ? "text-slate-500" : "text-cyan-300"));
+    var time = String(row.ts || "").split("T")[1] || "";
+    time = time.replace("Z", "").split(".")[0].split("+")[0];
+    var div = document.createElement("div");
+    div.className = "logline";
+    div.innerHTML = '<span class="text-slate-600">' + esc(time) + '</span><span class="' + cls + ' font-semibold">' + esc((lvl + "       ").slice(0, 7)) + '</span><span class="text-slate-300">' + esc(row.message) + "</span>";
+    host.appendChild(div);
+    while (host.children.length > 240) host.removeChild(host.firstChild);
+    var nearBottom = host.scrollHeight - host.scrollTop - host.clientHeight < 48;
+    if (nearBottom && !state.paused) host.scrollTop = host.scrollHeight;
+  }
+
+  async function pollLogs() {
+    try {
+      var res = await fetch("/api/logs?since=" + state.since);
+      var data = await res.json();
+      if (data.logs) { for (var i = 0; i < data.logs.length; i++) appendLog(data.logs[i]); }
+      if (typeof data.latest === "number") state.since = data.latest;
+      $("chip-backend").textContent = "ONLINE";
+      $("chip-backend").className = "chip chip-on";
+      setTimeout(pollLogs, 1500);
+    } catch (e) {
+      $("chip-backend").textContent = "OFFLINE";
+      $("chip-backend").className = "chip chip-err";
+      setTimeout(pollLogs, 4000);
+    }
+  }
+
+  async function pollStatus() {
+    try {
+      var res = await fetch("/api/status");
+      var s = await res.json();
+      if (s.accounts && s.accounts.length) {
+        var c = $("chip-account");
+        c.textContent = "@" + (s.accounts[0].username || s.accounts[0].id);
+        c.className = "chip chip-on";
+        if (!state.phone) state.phone = s.accounts[0].phone;
+      }
+      if (s.forwarder) {
+        $("relay-count").textContent = s.forwarder.forwarded || 0;
+        if (s.forwarder.running) {
+          $("chip-relay").textContent = "RELAY LIVE";
+          $("chip-relay").className = "chip chip-live";
+          $("btn-start").classList.add("hidden");
+          $("btn-stop").classList.remove("hidden");
+        }
+      }
+    } catch (e) { /* console stream already reflects outages */ }
+    setTimeout(pollStatus, 5000);
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    $("btn-otp").addEventListener("click", requestOtp);
+    $("btn-verify").addEventListener("click", verifyOtp);
+    $("btn-session").addEventListener("click", sessionLogin);
+    $("btn-start").addEventListener("click", startForwarder);
+    $("btn-stop").addEventListener("click", stopForwarder);
+    $("btn-copy-session").addEventListener("click", copySession);
+    $("btn-clear").addEventListener("click", function () { $("console-body").innerHTML = ""; });
+    $("in-filter").addEventListener("input", function () { state.filter = this.value.trim().toLowerCase(); });
+    $("btn-pause").addEventListener("click", function () {
+      state.paused = !state.paused;
+      var l = this.querySelector("[data-label]");
+      if (l) l.textContent = state.paused ? "Resume" : "Pause";
+    });
+    if (window.lucide) lucide.createIcons();
+    pollLogs();
+    pollStatus();
+  });
+})();
+<\/script>
+</body>
+</html>
+"""
+
+
+@app.route("/", methods=["GET"])
+async def dashboard():
+    return await render_template_string(DASHBOARD_HTML)
+
+
+# ----------------------------------------------------------------------------
+# Entrypoint (local dev). On Render: hypercorn main:app --bind 0.0.0.0:$PORT
+# ----------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+</script>
+
+<!-- ================= app logic ================= -->
+<script>
+(function () {
+  "use strict";
+
+  // ---------- payload extraction & restore ----------
+  const rawEl = document.getElementById("payload-mainpy");
+  const MAIN_PY = rawEl.textContent.replace(/<\\\/script/g, "<" + "/script");
+  const REQUIREMENTS = [
+    "quart==0.19.6",
+    "telethon==1.36.0",
+    "hypercorn==0.17.3",
+    "cryptg==0.4.0",
+    ""
+  ].join("\n");
+  const RENDER_YAML = [
+    "services:",
+    "  - type: web",
+    "    name: tg-relay",
+    "    runtime: python",
+    "    region: frankfurt",
+    "    plan: free",
+    "    buildCommand: pip install -r requirements.txt",
+    "    startCommand: hypercorn main:app --bind 0.0.0.0:$PORT",
+    "    autoDeploy: true",
+    ""
+  ].join("\n");
+
+  const FILES = {
+    "main.py": MAIN_PY,
+    "requirements.txt": REQUIREMENTS,
+    "render.yaml": RENDER_YAML
+  };
+
+  // ---------- syntax highlighting ----------
+  function esc(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  const PY_TOK = /("""[\s\S]*?"""|'''[\s\S]*?'''|f?\"(?:\\.|[^\"\\\n])*\"|f?'(?:\\.|[^'\\\n])*')|(#[^\n]*)|(\b(?:False|None|True|and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield)\b)|(@[\w\.]+(?:\([^\n]*\))?)|(\b\d[\d_]*(?:\.\d+)?\b)/g;
+
+  function hlPython(src) {
+    let out = "", last = 0;
+    src.replace(PY_TOK, function (m, str, com, kw, dec, num, off) {
+      out += esc(src.slice(last, off));
+      let cls = null;
+      if (str) cls = "tok-str";
+      else if (com) cls = "tok-com";
+      else if (kw) cls = "tok-kw";
+      else if (dec) cls = "tok-dec";
+      else if (num) cls = "tok-num";
+      if (cls) out += '<span class="' + cls + '">' + esc(m) + "</span>";
+      else out += esc(m);
+      last = off + m.length;
+      return m;
+    });
+    out += esc(src.slice(last));
+    return out.split("\n").map(function (l) { return '<span class="cl">' + (l || " ") + "</span>"; }).join("");
+  }
+
+  function hlPlain(src) {
+    return esc(src).split("\n").map(function (l) { return '<span class="cl">' + (l || " ") + "</span>"; }).join("");
+  }
+
+  let activeFile = "main.py";
+  const view = document.getElementById("src-view");
+
+  function renderTab(name) {
+    activeFile = name;
+    const src = FILES[name].replace(/^\n/, "").trimEnd();
+    view.innerHTML = name === "main.py" ? hlPython(src) : hlPlain(src);
+    document.getElementById("src-lines").textContent = src.split("\n").length;
+    document.getElementById("src-bytes").textContent = (new Blob([src]).size / 1024).toFixed(1);
+    document.querySelectorAll(".src-tab").forEach(function (t) {
+      const on = t.dataset.tab === name;
+      t.classList.toggle("border-cyan-400", on);
+      t.classList.toggle("text-cyan-300", on);
+      t.classList.toggle("bg-slate-900/60", on);
+      t.classList.toggle("border-transparent", !on);
+      t.classList.toggle("text-slate-500", !on);
+    });
+  }
+
+  document.querySelectorAll(".src-tab").forEach(function (t) {
+    t.addEventListener("click", function () { renderTab(t.dataset.tab); });
+  });
+
+  function copyText(text, btn) {
+    const done = function () {
+      if (!btn) return;
+      const orig = btn.innerHTML;
+      btn.classList.add("!bg-emerald-500");
+      setTimeout(function () { btn.innerHTML = orig; btn.classList.remove("!bg-emerald-500"); }, 1200);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { legacyCopy(text); done(); });
+    } else { legacyCopy(text); done(); }
+  }
+
+  function legacyCopy(text) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); } catch (e) { /* clipboard denied */ }
+    ta.remove();
+  }
+
+  document.getElementById("src-copy").addEventListener("click", function () {
+    copyText(FILES[activeFile], this);
+  });
+  document.getElementById("src-dl").addEventListener("click", function () {
+    const blob = new Blob([FILES[activeFile]], { type: "text/plain;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = activeFile;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 400);
+  });
+  document.getElementById("nav-copy-py").addEventListener("click", function () { copyText(MAIN_PY, this); });
+  document.getElementById("nav-copy-req").addEventListener("click", function () { copyText(REQUIREMENTS, this); });
+  document.getElementById("hero-copy-cmd").addEventListener("click", function () {
+    copyText("hypercorn main:app --bind 0.0.0.0:$PORT", null);
+  });
+
+  renderTab("main.py");
+
+  // ---------- reveal on scroll ----------
+  const io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("vis"); io.unobserve(e.target); } });
+  }, { threshold: 0.08 });
+  document.querySelectorAll(".reveal").forEach(function (el) { io.observe(el); });
+
+  // ---------- cursor glow ----------
+  const glow = document.getElementById("cursor-glow");
+  let gx = innerWidth / 2, gy = 240, tx = gx, ty = gy;
+  addEventListener("mousemove", function (e) { tx = e.clientX; ty = e.clientY; });
+  (function loopGlow() {
+    gx += (tx - gx) * 0.08; gy += (ty - gy) * 0.08;
+    glow.style.left = gx + "px"; glow.style.top = gy + "px";
+    requestAnimationFrame(loopGlow);
+  })();
+
+  // ---------- clock ----------
+  setInterval(function () {
+    const d = new Date();
+    const p = function (n) { return String(n).padStart(2, "0"); };
+    document.getElementById("tgr-clock").textContent = p(d.getUTCHours()) + ":" + p(d.getUTCMinutes()) + ":" + p(d.getUTCSeconds());
+  }, 1000);
+
+  // ====================================================================
+  // LIVE DECK — wired to the real API (same routes as the embedded UI)
+  // ====================================================================
+  const TG = {
+    base: localStorage.getItem("tgr_base") || "",
+    phone: localStorage.getItem("tgr_phone") || "",
+    since: 0,
+    paused: false,
+    filter: "",
+    offline: true
+  };
+
+  const $t = function (id) { return document.getElementById(id); };
+  const tval = function (id) { const el = $t(id); return el ? el.value.trim() : ""; };
+
+  $t("tgr-base").value = TG.base;
+  $t("tgr-api-id").value = localStorage.getItem("tgr_api_id") || "";
+  $t("tgr-api-hash").value = localStorage.getItem("tgr_api_hash") || "";
+  $t("tgr-phone").value = localStorage.getItem("tgr_phone") || "";
+
+  $t("tgr-base-save").addEventListener("click", function () {
+    TG.base = tval("tgr-base").replace(/\/+$/, "");
+    localStorage.setItem("tgr_base", TG.base);
+    TG.since = 0;
+    deckToast(TG.base ? ("API base set: " + TG.base) : "API base cleared — same-origin mode.", "ok");
+  });
+
+  function deckToast(msg, kind) {
+    appendDeckLog({ level: kind === "error" ? "ERROR" : (kind === "warn" ? "WARNING" : "INFO"), ts: new Date().toISOString(), message: "[ui] " + msg });
+  }
+
+  function setDeckBusy(id, busy, busyText) {
+    const b = $t(id);
+    if (!b) return;
+    b.disabled = busy;
+    const label = b.querySelector("[data-label]");
+    if (label) {
+      if (!label.dataset.orig) label.dataset.orig = label.textContent;
+      label.textContent = busy ? (busyText || "Working…") : label.dataset.orig;
+    }
+  }
+
+  async function deckFetch(path, opts) {
+    const res = await fetch(TG.base + path, opts || {});
+    return res;
+  }
+
+  async function deckPost(path, payload) {
+    const res = await deckFetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    let data = null;
+    try { data = await res.json(); } catch (e) { data = { ok: false, error: "HTTP " + res.status }; }
+    return { status: res.status, data: data };
+  }
+
+  function setOffline(on) {
+    TG.offline = on;
+    $t("tgr-offline").classList.toggle("hidden", !on);
+    const chip = $t("tgr-chip-backend");
+    if (on) { chip.className = "chip chip-err"; chip.innerHTML = '<span class="dot dot-blink"></span>BACKEND OFFLINE'; }
+    else { chip.className = "chip chip-on"; chip.innerHTML = '<span class="dot dot-blink"></span>BACKEND ONLINE'; }
+  }
+
+  // ---- auth actions ----
+  $t("tgr-btn-otp").addEventListener("click", async function () {
+    const apiId = parseInt(tval("tgr-api-id"), 10);
+    const payload = { api_id: apiId, api_hash: tval("tgr-api-hash"), phone: tval("tgr-phone") };
+    if (!apiId || !payload.api_hash || !payload.phone) { deckToast("Fill API_ID, API_HASH and phone.", "warn"); return; }
+    localStorage.setItem("tgr_api_id", String(apiId));
+    localStorage.setItem("tgr_api_hash", payload.api_hash);
+    localStorage.setItem("tgr_phone", payload.phone);
+    setDeckBusy("tgr-btn-otp", true, "Dispatching…");
+    try {
+      const r = await deckPost("/api/send-otp", payload);
+      if (r.data.already_connected) { deckMarkAccount(r.data.account, null); deckToast("Session already authorized.", "ok"); return; }
+      if (!r.data.ok) { deckToast(r.data.error || "send-otp failed (" + r.status + ")", "error"); return; }
+      TG.phone = payload.phone;
+      $t("tgr-otp-block").classList.remove("hidden");
+      deckToast("OTP dispatched via Telegram (" + (r.data.code_type || "app") + ").", "ok");
+    } catch (e) { deckToast("Backend unreachable — start hypercorn or set API base.", "error"); }
+    finally { setDeckBusy("tgr-btn-otp", false); }
+  });
+
+  $t("tgr-btn-verify").addEventListener("click", async function () {
+    const payload = { phone: tval("tgr-phone") || TG.phone, otp_code: tval("tgr-otp"), password: tval("tgr-2fa") };
+    if (!payload.phone || !payload.otp_code) { deckToast("Phone and OTP code required.", "warn"); return; }
+    setDeckBusy("tgr-btn-verify", true, "Verifying…");
+    try {
+      const r = await deckPost("/api/verify-otp", payload);
+      if (r.data.need_password) { deckToast(r.data.message || "2FA password required.", "warn"); $t("tgr-2fa").focus(); return; }
+      if (!r.data.ok) { deckToast(r.data.error || "verify failed (" + r.status + ")", "error"); return; }
+      deckMarkAccount(r.data.account, r.data.string_session);
+      deckToast("Connected as @" + (r.data.account.username || r.data.account.id), "ok");
+    } catch (e) { deckToast("Backend unreachable while verifying.", "error"); }
+    finally { setDeckBusy("tgr-btn-verify", false); }
+  });
+
+  $t("tgr-btn-session").addEventListener("click", async function () {
+    const payload = {
+      api_id: parseInt(tval("tgr-s-api-id") || tval("tgr-api-id"), 10),
+      api_hash: tval("tgr-s-api-hash") || tval("tgr-api-hash"),
+      session_string: tval("tgr-s-session")
+    };
+    if (!payload.api_id || !payload.api_hash || !payload.session_string) {
+      deckToast("API_ID, API_HASH and String Session are required.", "warn"); return;
+    }
+    setDeckBusy("tgr-btn-session", true, "Verifying…");
+    try {
+      const r = await deckPost("/api/login-session", payload);
+      if (!r.data.ok) { deckToast(r.data.error || "session login failed (" + r.status + ")", "error"); return; }
+      if (!r.data.already_connected) $t("tgr-s-session").value = "";
+      deckMarkAccount(r.data.account, null);
+      const who = "@" + (r.data.account.username || r.data.account.id);
+      deckToast((r.data.already_connected ? "Already active: " : "Session verified: ") + who, "ok");
+    } catch (e) { deckToast("Backend unreachable during session login.", "error"); }
+    finally { setDeckBusy("tgr-btn-session", false); }
+  });
+
+  function deckMarkAccount(account, session) {
+    TG.phone = account.phone || TG.phone;
+    const chip = $t("tgr-chip-account");
+    chip.className = "chip chip-on";
+    chip.textContent = "@" + (account.username || account.id);
+    if (session) {
+      $t("tgr-session-wrap").classList.remove("hidden");
+      $t("tgr-out-session").value = session;
+    }
+  }
+
+  $t("tgr-btn-copy-session").addEventListener("click", function () {
+    copyText($t("tgr-out-session").value, null);
+    deckToast("String session copied — treat it like a password.", "ok");
+  });
+
+  // ---- forwarder actions ----
+  $t("tgr-btn-start").addEventListener("click", async function () {
+    const payload = {
+      phone: TG.phone || tval("tgr-phone"),
+      source_channel_id: tval("tgr-source"),
+      target_channels: tval("tgr-targets"),
+      custom_branding_text: tval("tgr-branding")
+    };
+    if (!payload.source_channel_id || !payload.target_channels) { deckToast("Source + targets required.", "warn"); return; }
+    setDeckBusy("tgr-btn-start", true, "Binding…");
+    try {
+      const r = await deckPost("/api/start-forwarder", payload);
+      if (!r.data.ok) { deckToast(r.data.error || "start failed (" + r.status + ")", "error"); return; }
+      $t("tgr-chip-relay").className = "chip chip-live";
+      $t("tgr-chip-relay").innerHTML = '<span class="dot dot-blink"></span>RELAY LIVE';
+      $t("tgr-btn-start").classList.add("hidden");
+      $t("tgr-btn-stop").classList.remove("hidden");
+      $t("tgr-meta-relay").textContent = r.data.source.title + " → " + r.data.targets.map(function (t) { return t.title; }).join(", ");
+      deckToast("Forwarder bound: events.NewMessage active.", "ok");
+    } catch (e) { deckToast("Backend unreachable while starting forwarder.", "error"); }
+    finally { setDeckBusy("tgr-btn-start", false); }
+  });
+
+  $t("tgr-btn-stop").addEventListener("click", async function () {
+    setDeckBusy("tgr-btn-stop", true, "Stopping…");
+    try {
+      const r = await deckPost("/api/stop-forwarder", { phone: TG.phone || tval("tgr-phone") });
+      if (!r.data.ok) { deckToast(r.data.error || "stop failed", "error"); return; }
+      $t("tgr-chip-relay").className = "chip chip-off";
+      $t("tgr-chip-relay").innerHTML = '<span class="dot"></span>RELAY IDLE';
+      $t("tgr-btn-start").classList.remove("hidden");
+      $t("tgr-btn-stop").classList.add("hidden");
+      deckToast("Forwarder stopped. Handler detached.", "ok");
+    } catch (e) { deckToast("Backend unreachable while stopping.", "error"); }
+    finally { setDeckBusy("tgr-btn-stop", false); }
+  });
+
+  // ---- log console ----
+  function appendDeckLog(row) {
+    if (TG.filter) {
+      const hay = (String(row.level) + " " + String(row.message)).toLowerCase();
+      if (hay.indexOf(TG.filter) === -1) return;
+    }
+    const host = $t("tgr-console");
+    const lvl = String(row.level || "INFO").toUpperCase();
+    const cls = (lvl === "ERROR" || lvl === "CRITICAL") ? "text-rose-400"
+      : (lvl === "WARNING" ? "text-amber-400" : (lvl === "DEBUG" ? "text-slate-500" : "text-cyan-300"));
+    let time = String(row.ts || "").split("T")[1] || "";
+    time = time.replace("Z", "").split(".")[0].split("+")[0] || "--:--:--";
+    const div = document.createElement("div");
+    div.className = "logline";
+    div.innerHTML = '<span class="text-slate-600">' + esc(time) + '</span><span class="' + cls + ' font-semibold">' + esc((lvl + "       ").slice(0, 7)) + '</span><span class="text-slate-300">' + esc(row.message) + "</span>";
+    host.appendChild(div);
+    while (host.children.length > 240) host.removeChild(host.firstChild);
+    const nearBottom = host.scrollHeight - host.scrollTop - host.clientHeight < 48;
+    if (nearBottom && !TG.paused) host.scrollTop = host.scrollHeight;
+  }
+
+  async function pollLogs() {
+    try {
+      const res = await deckFetch("/api/logs?since=" + TG.since);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      if (TG.offline) { setOffline(false); deckToast("Backend stream acquired.", "ok"); }
+      (data.logs || []).forEach(appendDeckLog);
+      if (typeof data.latest === "number") TG.since = data.latest;
+      setTimeout(pollLogs, 1500);
+    } catch (e) {
+      if (!TG.offline) setOffline(true);
+      setTimeout(pollLogs, 4000);
+    }
+  }
+
+  async function pollStatus() {
+    try {
+      const res = await deckFetch("/api/status");
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const s = await res.json();
+      if (s.accounts && s.accounts.length) {
+        const chip = $t("tgr-chip-account");
+        chip.className = "chip chip-on";
+        chip.textContent = "@" + (s.accounts[0].username || s.accounts[0].id);
+      }
+      if (s.forwarder) {
+        $t("tgr-relay-count").textContent = (s.forwarder.forwarded || 0) + " relayed";
+        if (s.forwarder.running) {
+          $t("tgr-chip-relay").className = "chip chip-live";
+          $t("tgr-chip-relay").innerHTML = '<span class="dot dot-blink"></span>RELAY LIVE';
+          $t("tgr-btn-start").classList.add("hidden");
+          $t("tgr-btn-stop").classList.remove("hidden");
+        }
+      }
+    } catch (e) { /* offline banner handles state */ }
+    setTimeout(pollStatus, 5000);
+  }
+
+  $t("tgr-btn-pause").addEventListener("click", function () {
+    TG.paused = !TG.paused;
+    this.querySelector("[data-label]").textContent = TG.paused ? "Resume" : "Pause";
+  });
+  $t("tgr-btn-clear").addEventListener("click", function () { $t("tgr-console").innerHTML = ""; });
+  $t("tgr-filter").addEventListener("input", function () { TG.filter = this.value.trim().toLowerCase(); });
+
+  pollLogs();
+  pollStatus();
+
+  // ---------- icons ----------
+  if (window.lucide) lucide.createIcons();
+})();
+</script>
+</body>
+</html>
